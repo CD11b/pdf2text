@@ -311,7 +311,9 @@ class DocumentAnalysis:
 
                 if i == len(lines_with_styling) - 1: # Footer
                     last_line = filtered_lines[-1]
-                    if line.origin_y != last_line.origin_y:
+                    if line.origin_x == last_line.origin_x: # Body
+                        filtered_lines.append(line)
+                    elif line.origin_y != last_line.origin_y: # Footer
                         continue
 
                 filtered_lines.append(line)

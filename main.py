@@ -228,6 +228,8 @@ class DocumentAnalysis:
             counter = Counter()
             for line in lines_with_styling:
                 attr_value = getattr(line, styling_attribute)
+                if isinstance(attr_value, float):
+                    attr_value = round(attr_value)
                 counter[attr_value] += len(line.text)
             return counter
 
@@ -243,6 +245,33 @@ class DocumentAnalysis:
         except Exception as e:
             logging.exception(f"Error finding most common style: {e}")
             raise
+
+    @staticmethod
+    def get_styling_bounds(data):
+
+        series = pd.Series(data)
+        q1 = series.quantile(0.25)
+        q3 = series.quantile(0.75)
+        iqr = q3 - q1
+
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
+
+        return lower_bound, upper_bound
+
+    @staticmethod
+    def get_gap_differences(data):
+
+        differences = []
+        for i, value in enumerate(data):
+
+            if i < len(data) - 1:
+                difference = value - data[i + 1]
+                if difference < 0:
+                    difference = difference * -1
+                differences.append(difference)
+
+        return differences
 
     @staticmethod
     def check_ocr(lines_with_styling: list) -> bool:
@@ -268,18 +297,50 @@ class DocumentAnalysis:
             return False
 
     @staticmethod
-    def get_font_heuristics(lines_with_styling: list) -> dict:
+    def get_page_heuristics(lines_with_styling: list) -> dict:
 
         font_size_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines_with_styling, styling_attribute="font_size")
         font_name_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines_with_styling, styling_attribute="font_name")
 
+        origin_x_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines_with_styling, styling_attribute="origin_x")
+        origin_y_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines_with_styling, styling_attribute="origin_y")
+
         most_common_font_size = DocumentAnalysis.get_n_most_common(counter=font_size_frequency, n=1)
         most_common_font_name = DocumentAnalysis.get_n_most_common(counter=font_name_frequency, n=1)
+        most_common_origin_x = DocumentAnalysis.get_n_most_common(counter=origin_x_frequency, n=1)
+        most_common_origin_y = DocumentAnalysis.get_n_most_common(counter=origin_y_frequency, n=1)
 
 
-        return {'origin x': {'frequencies': origin_x_frequency, 'most common': most_common_origin_x[0][0]},
-                'origin y': {'frequencies': origin_y_frequency, 'most common': most_common_origin_y[0][0], 'lowest': lowest_origin_y, 'gap upper bound': upper_bound, 'gap lower bound': lower_bound},
-                'font size': {'frequencies': font_size_frequency, 'most common': most_common_font_size[0][0]},
+        font_size_expanded_data = []
+        for value, freq in font_size_frequency.items():
+            font_size_expanded_data.extend([value] * freq)
+
+        font_size_lower_bound, font_size_upper_bound = DocumentAnalysis.get_styling_bounds(font_size_expanded_data)
+
+        lowest_origin_y  = max(origin_y_frequency)
+
+        origin_y_values = sorted(origin_y_frequency, reverse=True)
+        origin_y_differences = DocumentAnalysis.get_gap_differences(origin_y_values)
+        origin_y_lower_bound, origin_y_upper_bound = DocumentAnalysis.get_styling_bounds(origin_y_differences)
+
+
+        i = 0
+        origin_x_differences = []
+        while i < len(lines_with_styling):
+            current_word = lines_with_styling[i]
+            line_y_boundary = round(current_word.origin_y)
+            current_line = []
+
+            while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary:
+                current_line.append(lines_with_styling[i])
+                i += 1
+            origin_x_differences.extend(DocumentAnalysis.get_gap_differences([round(line.origin_x) for line in current_line]))
+        origin_x_lower_bound, origin_x_upper_bound = DocumentAnalysis.get_styling_bounds(sorted(origin_x_differences))
+
+
+        return {'origin x': {'frequencies': origin_x_frequency, 'most common': most_common_origin_x[0][0],'upper bound': origin_x_upper_bound, 'lower bound': origin_x_lower_bound},
+                'origin y': {'frequencies': origin_y_frequency, 'most common': most_common_origin_y[0][0], 'lowest': lowest_origin_y, 'upper bound': origin_y_upper_bound, 'lower bound': origin_y_lower_bound},
+                'font size': {'frequencies': font_size_frequency, 'most common': most_common_font_size[0][0], 'upper bound': font_size_upper_bound, 'lower bound': font_size_lower_bound},
                 'font name': {'frequencies': font_name_frequency, 'most common': most_common_font_name[0][0]}}
 
     @staticmethod
@@ -509,6 +570,8 @@ def main():
 
             page_blocks = DocumentAnalysis.get_page_blocks_from_dict(pdf=pdf_reader.pdf, page_number=page)
             lines_with_styling = DocumentAnalysis.get_pdf_styling_from_blocks(page_blocks=page_blocks)
+            lines_without_blanks = [line for line in lines_with_styling if line.text.strip()]
+            lines_with_styling = DocumentAnalysis.filter_by_boundaries(lines_with_styling=lines_without_blanks)
             lines_without_numbers = Cleaner.clean_page_numbers(lines=lines_with_styling)
             filtered_lines_with_styling = DocumentAnalysis.filter_dominant_font(lines_with_styling=lines_without_numbers)
             cleaned_text = Cleaner.join_broken_sentences(lines=filtered_lines_with_styling)

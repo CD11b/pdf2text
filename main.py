@@ -264,7 +264,81 @@ class DocumentAnalysis:
         most_common_font_size = DocumentAnalysis.get_n_most_common(counter=font_size_frequency, n=1)
         most_common_font_name = DocumentAnalysis.get_n_most_common(counter=font_name_frequency, n=1)
 
-        return {'font size': {'frequencies': font_size_frequency, 'most common': most_common_font_size[0][0]}, 'font name': {'frequencies': font_name_frequency, 'most common': most_common_font_name[0][0]}}
+
+        return {'origin x': {'frequencies': origin_x_frequency, 'most common': most_common_origin_x[0][0]},
+                'origin y': {'frequencies': origin_y_frequency, 'most common': most_common_origin_y[0][0], 'lowest': lowest_origin_y, 'gap upper bound': upper_bound, 'gap lower bound': lower_bound},
+                'font size': {'frequencies': font_size_frequency, 'most common': most_common_font_size[0][0]},
+                'font name': {'frequencies': font_name_frequency, 'most common': most_common_font_name[0][0]}}
+
+    @staticmethod
+    def filter_by_boundaries(lines_with_styling):
+
+        filtered_lines: list[StyledLine] = []
+        current_line = []
+
+        font_heuristics = DocumentAnalysis.get_page_heuristics(lines_with_styling)
+
+        left_boundary = font_heuristics['origin x']['most common']
+        top_boundary = None
+        bottom_boundary = font_heuristics['origin y']['lowest']
+
+        i = 0
+        while i < len(lines_with_styling):
+
+            current_word = lines_with_styling[i]
+            line_y_boundary = round(current_word.origin_y)
+
+            if top_boundary is None:
+                if round(current_word.origin_x) == left_boundary: # Body start
+                    top_boundary = round(current_word.origin_y)
+
+                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        current_line.append(lines_with_styling[i])
+                        i += 1
+
+                elif round(current_word.origin_x) < left_boundary: # Header
+                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        i += 1
+
+            elif lines_with_styling[i].origin_y >= bottom_boundary - font_heuristics['origin y']['gap lower bound']: # Very bottom
+                while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    i += 1
+
+            elif round(current_word.origin_x) == left_boundary: # Main body
+                while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    current_line.append(lines_with_styling[i])
+                    i += 1
+
+            elif round(current_word.origin_x) > left_boundary: # Indented block
+                if round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        current_line.append(lines_with_styling[i])
+                        i += 1
+
+            elif round(current_word.origin_x) < left_boundary:  # Left-side footer
+                while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    i += 1
+            else:
+                i += 1
+
+
+            if len(current_line) > 0:
+                # for word in current_line:
+
+                filtered_lines.append(StyledLine(text=' '.join(line.text for line in current_line if line.text.strip()),
+                                                 font_size=round(pd.Series([line.font_size for line in current_line]).mean()),
+                                                 font_name=current_word.font_name,
+                                                 origin_x=round(current_word.origin_x),
+                                                 origin_y=round(current_word.origin_y)))
+                current_line = []
+
+
+        return filtered_lines
+
+    # @staticmethod
+    # def separate_by_paragraph(lines_with_styling: list):
+
+
 
     @staticmethod
     def filter_dominant_font(lines_with_styling: list) -> list:

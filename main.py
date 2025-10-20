@@ -558,11 +558,11 @@ class OutputWriter:
 
         if len(pdf.metadata['title']) > 1:
             sanitized_title = re.sub(r'[<>:"/\\|?*\n\r\t;]', '_', pdf.metadata['title']).strip()
-            self.output_path = f"{sanitized_title}.txt"
+            self.output_path = f"./generated/{sanitized_title}.txt"
 
         else:
             base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-            self.output_path = f"{base_name}.txt"
+            self.output_path = f"./generated/{base_name}.txt"
 
         return self.output_path
 

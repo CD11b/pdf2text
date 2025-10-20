@@ -180,10 +180,11 @@ class DocumentAnalysis:
         self.font_heuristics = None
 
     @staticmethod
-    def get_page_blocks_from_dict(pdf: pymupdf.Document, page_number: int) -> list:
+    def get_page_blocks_from_dict(pdf: pymupdf.Document, page_number: int, sort: bool) -> list:
 
         try:
-            page_dict = pdf[page_number].get_text("dict") #read page 1
+            page_text = pdf[page_number].get_textpage()
+            page_dict = page_text.extractDICT(sort=sort)
             page_blocks = page_dict["blocks"]
 
             return page_blocks
@@ -198,9 +199,10 @@ class DocumentAnalysis:
         try:
             lines_with_styling: list[StyledLine] = []
 
-            for block in sorted(page_blocks, key=lambda b: (b['bbox'][1], b['bbox'][0])):  # top-left to bottom-right
+            for block in page_blocks:
                 if block["type"] != 0:
                     continue # text blocks only
+
                 for line in block["lines"]:
                     spans = line["spans"]
 
@@ -441,21 +443,26 @@ class DocumentAnalysis:
         if len(lines_with_styling) == 0:
             return lines_with_styling
 
-        font_heuristics = DocumentAnalysis.get_font_heuristics(lines_with_styling)
+        ocr = False
 
-        # if DocumentAnalysis.check_ocr(lines_with_styling=lines_with_styling):
-        #     x = True
+        if DocumentAnalysis.check_ocr(lines_with_styling=lines_with_styling):
+            ocr = True
+            lines_with_text = [line for line in lines_with_styling if line.text != '']
+            lines_with_styling = lines_with_text
         #     Cleaner.generate_ocr_lines(lines_with_styling=lines_with_styling, most_common_font_name=font_heuristics['font name']['most common'])
 
         filtered_lines = []
+
+        font_heuristics = DocumentAnalysis.get_page_heuristics(lines_with_styling)
 
         for i, line in enumerate(lines_with_styling):
 
             if i == 0:
                 pass
 
-            if line.font_size != font_heuristics['font size']['most common']:
-                continue
+            if ocr is True and font_heuristics['font size']['lower bound'] <= line.font_size <= font_heuristics['font size']['upper bound']:
+                filtered_lines.append(line)
+
             elif line.font_name != font_heuristics['font name']['most common']:
 
                 if i > 0 and len(filtered_lines) >= 1:

@@ -179,7 +179,6 @@ class DocumentAnalysis:
                 for line in block["lines"]:
                     spans = line["spans"]
 
-
                     for span in spans:
 
                         line_text = "".join(span["text"]).strip()
@@ -443,8 +442,6 @@ class DocumentAnalysis:
 
         for i, line in enumerate(lines_with_styling):
 
-            if i == 0:
-                pass
 
             if ocr is True and font_heuristics['font size']['lower bound'] <= line.font_size <= font_heuristics['font size']['upper bound']:
                 filtered_lines.append(line)

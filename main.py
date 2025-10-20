@@ -317,8 +317,8 @@ class DocumentAnalysis:
         return lower_bound, upper_bound
 
     @staticmethod
-    def get_line_gaps(style_frequency):
-        values = sorted(style_frequency, reverse=True)
+    def get_line_gaps(style_counter):
+        values = sorted(style_counter, reverse=True)
         differences = DocumentAnalysis.get_gap_differences(values)
         lower_bound, upper_bound = DocumentAnalysis.get_styling_bounds(differences)
 

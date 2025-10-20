@@ -364,7 +364,7 @@ class DocumentAnalysis:
 
         left_boundary = font_heuristics['origin x']['most common']
         top_boundary = None
-        bottom_boundary = font_heuristics['origin y']['lowest']
+        bottom_boundary = font_heuristics['origin y']['maximum']
 
         i = 0
         while i < len(lines_with_styling):

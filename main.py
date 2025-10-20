@@ -6,6 +6,7 @@ import unicodedata
 from dataclasses import dataclass
 from collections import Counter
 import logging
+import pandas as pd
 
 os.environ["TESSDATA_PREFIX"] = "./training"
 

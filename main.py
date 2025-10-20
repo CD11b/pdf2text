@@ -558,7 +558,7 @@ def main():
         multipage_parentheses = None
         for page in range(pdf_reader.get_page_count()):
 
-            page_blocks = DocumentAnalysis.get_page_blocks_from_dict(pdf=pdf_reader.pdf, page_number=page)
+            page_blocks = DocumentAnalysis.get_page_blocks_from_dict(pdf=pdf_reader.pdf, page_number=page, sort=False)
             lines_with_styling = DocumentAnalysis.get_pdf_styling_from_blocks(page_blocks=page_blocks)
             lines_without_blanks = [line for line in lines_with_styling if line.text.strip()]
             lines_with_styling = DocumentAnalysis.filter_by_boundaries(lines_with_styling=lines_without_blanks)

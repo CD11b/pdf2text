@@ -299,13 +299,45 @@ class DocumentAnalysis:
             return False
 
     @staticmethod
-    def get_page_heuristics(lines_with_styling: list) -> dict:
+    def get_word_gaps(lines):
+        i = 0
+        origin_x_differences = []
+        while i < len(lines):
+            current_word = lines[i]
+            line_y_boundary = round(current_word.origin_y)
+            current_line = []
 
-        font_size_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines_with_styling, styling_attribute="font_size")
-        font_name_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines_with_styling, styling_attribute="font_name")
+            while i < len(lines) and round(lines[i].origin_y) == line_y_boundary:
+                current_line.append(lines[i])
+                i += 1
+            origin_x_differences.extend(DocumentAnalysis.get_gap_differences([round(line.origin_x) for line in current_line]))
+        lower_bound, upper_bound = DocumentAnalysis.get_styling_bounds(sorted(origin_x_differences))
 
-        origin_x_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines_with_styling, styling_attribute="origin_x")
-        origin_y_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines_with_styling, styling_attribute="origin_y")
+        return lower_bound, upper_bound
+
+    @staticmethod
+    def get_line_gaps(style_frequency):
+        values = sorted(style_frequency, reverse=True)
+        differences = DocumentAnalysis.get_gap_differences(values)
+        lower_bound, upper_bound = DocumentAnalysis.get_styling_bounds(differences)
+
+        return lower_bound, upper_bound
+
+    @staticmethod
+    def get_min_styling_attr(style_frequency):
+        return min(style_frequency)
+
+    @staticmethod
+    def get_max_styling_attr(style_frequency):
+        return max(style_frequency)
+
+    @staticmethod
+    def get_page_heuristics(lines: list) -> dict:
+
+        font_size_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines, styling_attribute="font_size")
+        font_name_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines, styling_attribute="font_name")
+        origin_x_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines, styling_attribute="origin_x")
+        origin_y_frequency = DocumentAnalysis.get_styling_frequency(lines_with_styling=lines, styling_attribute="origin_y")
 
         most_common_font_size = DocumentAnalysis.get_n_most_common(counter=font_size_frequency, n=1)
         most_common_font_name = DocumentAnalysis.get_n_most_common(counter=font_name_frequency, n=1)
@@ -317,32 +349,9 @@ class DocumentAnalysis:
         for value, freq in font_size_frequency.items():
             font_size_expanded_data.extend([value] * freq)
 
-        font_size_lower_bound, font_size_upper_bound = DocumentAnalysis.get_styling_bounds(font_size_expanded_data)
-
-        lowest_origin_y  = max(origin_y_frequency)
-
-        origin_y_values = sorted(origin_y_frequency, reverse=True)
-        origin_y_differences = DocumentAnalysis.get_gap_differences(origin_y_values)
-        origin_y_lower_bound, origin_y_upper_bound = DocumentAnalysis.get_styling_bounds(origin_y_differences)
-
-
-        i = 0
-        origin_x_differences = []
-        while i < len(lines_with_styling):
-            current_word = lines_with_styling[i]
-            line_y_boundary = round(current_word.origin_y)
-            current_line = []
-
-            while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary:
-                current_line.append(lines_with_styling[i])
-                i += 1
-            origin_x_differences.extend(DocumentAnalysis.get_gap_differences([round(line.origin_x) for line in current_line]))
-        origin_x_lower_bound, origin_x_upper_bound = DocumentAnalysis.get_styling_bounds(sorted(origin_x_differences))
-
-
-        return {'origin x': {'frequencies': origin_x_frequency, 'most common': most_common_origin_x[0][0],'upper bound': origin_x_upper_bound, 'lower bound': origin_x_lower_bound},
-                'origin y': {'frequencies': origin_y_frequency, 'most common': most_common_origin_y[0][0], 'lowest': lowest_origin_y, 'upper bound': origin_y_upper_bound, 'lower bound': origin_y_lower_bound},
-                'font size': {'frequencies': font_size_frequency, 'most common': most_common_font_size[0][0], 'upper bound': font_size_upper_bound, 'lower bound': font_size_lower_bound},
+        return {'origin x': {'frequencies': origin_x_frequency, 'lower bound': DocumentAnalysis.get_word_gaps(lines=lines)[0], 'upper bound': DocumentAnalysis.get_word_gaps(lines=lines)[1]},
+                'origin y': {'frequencies': origin_y_frequency, 'maximum': DocumentAnalysis.get_max_styling_attr(style_frequency=origin_y_frequency), 'lower bound': DocumentAnalysis.get_line_gaps(style_frequency=origin_y_frequency)[0], 'upper bound': DocumentAnalysis.get_line_gaps(style_frequency=origin_y_frequency)[1]},
+                'font size': {'frequencies': font_size_frequency, 'most common': most_common_font_size[0][0], 'lower bound': DocumentAnalysis.get_styling_bounds(font_size_expanded_data)[0], 'upper bound': DocumentAnalysis.get_styling_bounds(font_size_expanded_data)[1]},
                 'font name': {'frequencies': font_name_frequency, 'most common': most_common_font_name[0][0]}}
 
     @staticmethod
@@ -351,7 +360,7 @@ class DocumentAnalysis:
         filtered_lines: list[StyledLine] = []
         current_line = []
 
-        font_heuristics = DocumentAnalysis.get_page_heuristics(lines_with_styling)
+        font_heuristics = DocumentAnalysis.get_page_heuristics(lines=lines_with_styling)
 
         left_boundary = font_heuristics['origin x']['most common']
         top_boundary = None
@@ -461,7 +470,7 @@ class DocumentAnalysis:
 
         filtered_lines = []
 
-        font_heuristics = DocumentAnalysis.get_page_heuristics(lines_with_styling)
+        font_heuristics = DocumentAnalysis.get_page_heuristics(lines=lines_with_styling)
 
         for i, line in enumerate(lines_with_styling):
 

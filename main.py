@@ -501,7 +501,7 @@ def main():
             filtered_lines_with_styling = DocumentAnalysis.filter_dominant_font(lines_with_styling=lines_without_numbers)
             cleaned_text = Cleaner.join_broken_sentences(lines=filtered_lines_with_styling)
             page_text, multipage_parentheses = Cleaner.clean_extracted_text(text=cleaned_text,
-                                                                                 multipage_parentheses=multipage_parentheses)
+                                                                                 multipage_parentheses=multipage_parentheses, ocr=True)
 
             output_writer.write(mode="a", text=f'{page_text}\n\n')
 

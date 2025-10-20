@@ -71,34 +71,6 @@ class Cleaner:
             logging.exception(f"Error joining broken sentences: {e}")
             raise
 
-    # @staticmethod
-    # def generate_ocr_lines(lines_with_styling: list, most_common_font_name: str) -> list:
-    #
-    #     logging.debug(f"Joining broken sentences of OCR'd text.")
-    #
-    #     try:
-    #
-    #         joined_lines = []
-    #         line = 0
-    #
-    #         for i, current_line in enumerate(lines_with_styling):
-    #
-    #             if i == 0:
-    #
-    #                 joined_lines.append(current_line.text)
-    #
-    #             else:
-    #                 if current_line.origin_y == joined_lines[-1].origin_y:
-    #                     joined_lines.append(current_line.text)
-    #                 else:
-    #                     line += 1
-    #                     joined_lines.append(current_line.text)
-    #
-    #     except Exception as e:
-    #         logging.exception(f"Error joining broken sentences: {e}")
-    #         raise
-
-
     @staticmethod
     def clean_extracted_text(text: str, ocr: bool, multipage_parentheses: str | None = None) -> tuple[str, str]:
         """Clean text in a single pass for better performance."""

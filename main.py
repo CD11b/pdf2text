@@ -132,8 +132,8 @@ class Cleaner:
 
                         i += 1
 
-                    if result and result[-1] == ' ': # Remove extra space
-                        result.pop()
+                        if result and result[-1] == ' ': # Remove extra space
+                            result.pop()
 
                     continue
 

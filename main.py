@@ -300,9 +300,31 @@ class DocumentAnalysis:
                     while round(lines_with_styling[i].origin_y) == line_y_boundary:
                         i += 1
 
-            elif lines_with_styling[i].origin_y >= bottom_boundary - font_heuristics['origin y']['gap lower bound']: # Very bottom
-                while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary:
+                else:
                     i += 1
+
+            elif lines_with_styling[i].origin_y >= bottom_boundary - font_heuristics['origin y']['lower bound']: # Very bottom
+
+                if round(lines_with_styling[i].origin_x) == round(filtered_lines[-1].origin_x): # Continued indented block
+                    while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary:
+
+                        if i < len(lines_with_styling) - 1:
+                            word_separation = round(lines_with_styling[i + 1].origin_x) - round(lines_with_styling[i].origin_x)
+                        else:
+                            word_separation = font_heuristics['origin x']['lower bound']
+
+                        if font_heuristics['origin x']['lower bound'] <= word_separation <= font_heuristics['origin x']['upper bound']:
+                            current_line.append(lines_with_styling[i])
+                            i += 1
+
+                        else:
+                            current_line.append(lines_with_styling[i])
+                            i += 1
+                            break
+
+                else:
+                    while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        i += 1
 
             elif round(current_word.origin_x) == left_boundary: # Main body
                 while round(lines_with_styling[i].origin_y) == line_y_boundary:

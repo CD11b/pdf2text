@@ -99,7 +99,7 @@ class Cleaner:
 
 
     @staticmethod
-    def clean_extracted_text(text: str, multipage_parentheses: str) -> tuple[str, str]:
+    def clean_extracted_text(text: str, ocr: bool, multipage_parentheses: str | None = None) -> tuple[str, str]:
         """Clean text in a single pass for better performance."""
 
         try:
@@ -112,30 +112,42 @@ class Cleaner:
                 # Skip parentheses and their content
                 pairs = {'(': ')', '[': ']', '{': '}'}
 
-                if char in pairs or multipage_parentheses:
+                if i != 0 and text[i - 1] == ' ':
 
-                    open_char = char
-                    if multipage_parentheses:
-                        open_char = multipage_parentheses
+                    if char in pairs or multipage_parentheses is not None:
 
-                    close_char = pairs[open_char]
-                    depth = 1
-                    i += 1
-                    while i < len(text) and depth > 0:
-                        if text[i] == open_char:
-                            depth += 1
-                        elif text[i] == close_char:
-                            depth -= 1
-                            multipage_parentheses = None
-                        elif i == len(text) - 1:
-                            multipage_parentheses = open_char
 
+                        if multipage_parentheses:
+                            open_char = multipage_parentheses
+                        else:
+                            open_char = char
+
+                        close_char = pairs[open_char]
+                        depth = 1
                         i += 1
+                        iterations = 0
+                        while i < len(text) and depth > 0:
+
+                            if iterations >= 30 and ocr is True: # Misrecognized parentheses
+                                i -= 30
+                                result.append(open_char)
+                                break
+
+                            if text[i] == open_char:
+                                depth += 1
+                            elif text[i] == close_char:
+                                depth -= 1
+                                multipage_parentheses = None
+                            elif i == len(text) - 1:
+                                multipage_parentheses = open_char
+
+                            i += 1
+                            iterations += 1
 
                         if result and result[-1] == ' ': # Remove extra space
                             result.pop()
 
-                    continue
+                        continue
 
                 # Skip emojis and symbols
                 if (unicodedata.category(char)[0] in ['S'] or
@@ -492,7 +504,7 @@ def main():
 
         output_writer.write(mode="w")
 
-        multipage_parentheses = False
+        multipage_parentheses = None
         for page in range(pdf_reader.get_page_count()):
 
             page_blocks = DocumentAnalysis.get_page_blocks_from_dict(pdf=pdf_reader.pdf, page_number=page)

@@ -342,20 +342,50 @@ class DocumentAnalysis:
             current_word = lines_with_styling[i]
             line_y_boundary = round(current_word.origin_y)
 
-            if top_boundary is None:
-                if round(current_word.origin_x) == left_boundary: # Body start
-                    top_boundary = round(current_word.origin_y)
-
-                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
-                        current_line.append(lines_with_styling[i])
-                        i += 1
-
-                elif round(current_word.origin_x) < left_boundary: # Header
+            if top_boundary is None: # Removing headers
+                
+                if round(current_word.origin_x) < left_boundary: # Header
                     while round(lines_with_styling[i].origin_y) == line_y_boundary:
                         i += 1
+
+                elif round(current_word.origin_x) == left_boundary:  # Body start
+
+                    gap_to_next_line = 0
+                    j = i
+                    while gap_to_next_line == 0:
+                        gap_to_next_line = round(lines_with_styling[j + 1].origin_y) - round(lines_with_styling[i].origin_y)
+                        j += 1
+
+                    if gap_to_next_line > font_heuristics['origin y']['upper bound']: # Aligned header
+                        while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                            i += 1
+                    else:
+                        top_boundary = round(current_word.origin_y)
+                        while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                            current_line.append(lines_with_styling[i])
+                            i += 1
+
+                elif round(current_word.origin_x) > left_boundary: # Edge case: Indented main body
+
+                    if round(current_word.origin_x) - font_heuristics['origin x']['lower bound'] > left_boundary: # Indented header
+                        while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                            i += 1
+
+                    elif font_heuristics['font size']['lower bound'] <= round(current_word.font_size) <= font_heuristics['font size']['upper bound']:
+
+                        top_boundary = round(current_word.origin_y)
+
+                        while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                            current_line.append(lines_with_styling[i])
+                            i += 1
+
+                    else:
+                        while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                            i += 1
 
                 else:
-                    i += 1
+                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        i += 1
 
             elif lines_with_styling[i].origin_y >= bottom_boundary - font_heuristics['origin y']['lower bound']: # Very bottom
 

@@ -218,17 +218,21 @@ class DocumentAnalysis:
             raise
 
     @staticmethod
-    def get_styling_bounds(data):
-
+    def get_styling_bounds(data, threshold):
         series = pd.Series(data)
-        q1 = series.quantile(0.25)
-        q3 = series.quantile(0.75)
-        iqr = q3 - q1
+        mean = series.mean()
+        std = series.std()
 
-        lower_bound = q1 - 1.5 * iqr
-        upper_bound = q3 + 1.5 * iqr
+        if std == 0 or pd.isna(std):
+            return series.min(), series.max()
 
-        return lower_bound, upper_bound
+        z_scores = (series - mean) / std
+        inlier_series = series[z_scores.abs() <= threshold]
+
+        if inlier_series.empty:
+            return series.min(), series.max()
+
+        return inlier_series.min(), inlier_series.max()
 
     @staticmethod
     def get_gap_differences(data):
@@ -268,7 +272,7 @@ class DocumentAnalysis:
             return False
 
     @staticmethod
-    def get_word_gaps(lines):
+    def get_word_gaps(lines, threshold):
         i = 0
         origin_x_differences = []
         while i < len(lines):
@@ -280,15 +284,15 @@ class DocumentAnalysis:
                 current_line.append(lines[i])
                 i += 1
             origin_x_differences.extend(DocumentAnalysis.get_gap_differences([round(line.origin_x) for line in current_line]))
-        lower_bound, upper_bound = DocumentAnalysis.get_styling_bounds(sorted(origin_x_differences))
+        lower_bound, upper_bound = DocumentAnalysis.get_styling_bounds(sorted(origin_x_differences), threshold=threshold)
 
         return lower_bound, upper_bound
 
     @staticmethod
-    def get_line_gaps(style_counter):
+    def get_line_gaps(style_counter, threshold):
         values = sorted(style_counter, reverse=True)
         differences = DocumentAnalysis.get_gap_differences(values)
-        lower_bound, upper_bound = DocumentAnalysis.get_styling_bounds(differences)
+        lower_bound, upper_bound = DocumentAnalysis.get_styling_bounds(differences, threshold=threshold)
 
         return lower_bound, upper_bound
 
@@ -301,7 +305,7 @@ class DocumentAnalysis:
         return max(style_counter)
 
     @staticmethod
-    def get_page_heuristics(lines: list) -> dict:
+    def get_page_heuristics(lines: list, ocr: bool) -> dict:
 
         font_size_counter = DocumentAnalysis.get_styling_counter(lines_with_styling=lines, styling_attribute="font_size")
         font_name_counter = DocumentAnalysis.get_styling_counter(lines_with_styling=lines, styling_attribute="font_name")
@@ -312,22 +316,34 @@ class DocumentAnalysis:
         most_common_font_name = DocumentAnalysis.get_n_most_common(counter=font_name_counter, n=1)
         most_common_origin_x = DocumentAnalysis.get_n_most_common(counter=origin_x_counter, n=1)
 
+        if ocr:
+            threshold = 3.0
+        else:
+            threshold = 1.0
+
         font_size_expanded_data = []
-        for value, freq in font_size_counter.items():
+        for value, freq in sorted(font_size_counter.items()):
             font_size_expanded_data.extend([value] * freq)
 
-        return {'origin x': {'most common': most_common_origin_x[0][0], 'lower bound': DocumentAnalysis.get_word_gaps(lines=lines)[0], 'upper bound': DocumentAnalysis.get_word_gaps(lines=lines)[1]},
-                'origin y': {'maximum': DocumentAnalysis.get_max_styling_attr(style_counter=origin_y_counter), 'lower bound': DocumentAnalysis.get_line_gaps(style_counter=origin_y_counter)[0], 'upper bound': DocumentAnalysis.get_line_gaps(style_counter=origin_y_counter)[1]},
-                'font size': {'most common': most_common_font_size[0][0], 'lower bound': DocumentAnalysis.get_styling_bounds(font_size_expanded_data)[0], 'upper bound': DocumentAnalysis.get_styling_bounds(font_size_expanded_data)[1]},
+        font_size_lower_bound, font_size_upper_bound = DocumentAnalysis.get_styling_bounds(font_size_expanded_data, threshold=threshold)
+
+
+        origin_x_lower_bound, origin_x_upper_bound = DocumentAnalysis.get_word_gaps(lines=lines, threshold=threshold)
+        origin_y_lower_bound, origin_y_upper_bound = DocumentAnalysis.get_line_gaps(style_counter=origin_y_counter, threshold=threshold)
+
+
+        return {'origin x': {'most common': most_common_origin_x[0][0], 'lower bound': origin_x_lower_bound, 'upper bound': origin_x_upper_bound},
+                'origin y': {'maximum': DocumentAnalysis.get_max_styling_attr(style_counter=origin_y_counter), 'lower bound': origin_y_lower_bound, 'upper bound': origin_y_upper_bound},
+                'font size': {'most common': most_common_font_size[0][0], 'lower bound': font_size_lower_bound, 'upper bound': font_size_upper_bound},
                 'font name': {'most common': most_common_font_name[0][0]}}
 
     @staticmethod
-    def filter_by_boundaries(lines_with_styling):
+    def filter_by_boundaries(lines_with_styling, ocr: bool):
 
         filtered_lines: list[StyledLine] = []
         current_line = []
 
-        font_heuristics = DocumentAnalysis.get_page_heuristics(lines=lines_with_styling)
+        font_heuristics = DocumentAnalysis.get_page_heuristics(lines=lines_with_styling, ocr=ocr)
 
         left_boundary = font_heuristics['origin x']['most common']
         top_boundary = None
@@ -397,7 +413,7 @@ class DocumentAnalysis:
                         else:
                             word_separation = round(lines_with_styling[i + 1].origin_x) - round(lines_with_styling[i].origin_x)
 
-                            if font_heuristics['origin x']['lower bound'] <= word_separation <= font_heuristics['origin x']['upper bound']:
+                            if font_heuristics['origin x']['lower bound'] <= word_separation <= font_heuristics['origin x']['upper bound']: # Doesn't work for non-ocr
                                 current_line.append(lines_with_styling[i])
                                 i += 1
                             else: # Replace with table detection
@@ -597,12 +613,17 @@ def main():
             page_blocks = DocumentAnalysis.get_page_blocks_from_dict(pdf=pdf_reader.pdf, page_number=page, sort=False)
             lines_with_styling = DocumentAnalysis.get_pdf_styling_from_blocks(page_blocks=page_blocks)
             lines_without_blanks = [line for line in lines_with_styling if line.text.strip()]
-            lines_with_styling = DocumentAnalysis.filter_by_boundaries(lines_with_styling=lines_without_blanks)
+
+            ocr = False
+            if DocumentAnalysis.check_ocr(lines_with_styling=lines_with_styling):
+                ocr = True
+
+            lines_with_styling = DocumentAnalysis.filter_by_boundaries(lines_with_styling=lines_without_blanks, ocr=ocr)
             lines_without_numbers = Cleaner.clean_page_numbers(lines=lines_with_styling)
             filtered_lines_with_styling = DocumentAnalysis.filter_dominant_font(lines_with_styling=lines_without_numbers)
             cleaned_text = Cleaner.join_broken_sentences(lines=filtered_lines_with_styling)
             page_text, multipage_parentheses = Cleaner.clean_extracted_text(text=cleaned_text,
-                                                                                 multipage_parentheses=multipage_parentheses, ocr=True)
+                                                                                 multipage_parentheses=multipage_parentheses, ocr=ocr)
 
             output_writer.write(mode="a", text=f'{page_text}\n\n')
 

@@ -426,9 +426,25 @@ class DocumentAnalysis:
                         i += 1
 
             elif round(current_word.origin_x) == left_boundary: # Main body
-                while round(lines_with_styling[i].origin_y) == line_y_boundary:
-                    current_line.append(lines_with_styling[i])
-                    i += 1
+
+                if font_heuristics['font size']['lower bound'] <= round(lines_with_styling[i].font_size) <= font_heuristics['font size']['upper bound']:
+                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        current_line.append(lines_with_styling[i])
+                        i += 1
+
+                else: # Edge case: Aligned title
+                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        i += 1
+
+            elif round(lines_with_styling[i].origin_y) < round(filtered_lines[-1].origin_y): # Titles outside regular read-order
+
+                if lines_with_styling[i].font_size == font_heuristics['font size']['most common']: # Edge case: Indented main body
+                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        current_line.append(lines_with_styling[i])
+                        i += 1
+                else:
+                    while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        i += 1
 
             elif round(current_word.origin_x) > left_boundary: # Indented block
 
@@ -471,65 +487,6 @@ class DocumentAnalysis:
 
     # @staticmethod
     # def separate_by_paragraph(lines_with_styling: list):
-
-
-
-    @staticmethod
-    def filter_dominant_font(lines_with_styling: list) -> list:
-
-        if len(lines_with_styling) == 0:
-            return lines_with_styling
-
-        ocr = False
-
-        if DocumentAnalysis.check_ocr(lines_with_styling=lines_with_styling):
-            ocr = True
-            lines_with_text = [line for line in lines_with_styling if line.text != '']
-            lines_with_styling = lines_with_text
-        #     Cleaner.generate_ocr_lines(lines_with_styling=lines_with_styling, most_common_font_name=font_heuristics['font name']['most common'])
-
-        filtered_lines = []
-
-        font_heuristics = DocumentAnalysis.get_page_heuristics(lines=lines_with_styling)
-
-        for i, line in enumerate(lines_with_styling):
-
-
-            if ocr is True and font_heuristics['font size']['lower bound'] <= line.font_size <= font_heuristics['font size']['upper bound']:
-                filtered_lines.append(line)
-
-            elif line.font_name != font_heuristics['font name']['most common']:
-
-                if i > 0 and len(filtered_lines) >= 1:
-                    last_line = filtered_lines[-1]
-                    if line.origin_y == last_line.origin_y and last_line.font_name == font_heuristics['font name']['most common']:
-                        filtered_lines.append(line)
-                        continue
-
-                if i < len(lines_with_styling) - 1:
-                    next_line = lines_with_styling[i + 1]
-                    if line.origin_y == next_line.origin_y and next_line.font_name == font_heuristics['font name']['most common']:
-                        filtered_lines.append(line)
-            else:
-
-                if i == 0: # Header
-                    next_line = lines_with_styling[i + 1]
-                    if line.origin_y != next_line.origin_y:
-                        if line.origin_x == next_line.origin_x:
-                            pass
-                        else:
-                            continue
-
-                # if i == len(lines_with_styling) - 1: # Last line
-                #     last_line = filtered_lines[-1]
-                #     if line.origin_x == last_line.origin_x: # Body
-                #         filtered_lines.append(line)
-                #     elif line.origin_y != last_line.origin_y: # Footer
-                #         continue
-
-                filtered_lines.append(line)
-
-        return filtered_lines
 
 class PDFReader:
     def __init__(self, pdf_path: str):
@@ -620,8 +577,7 @@ def main():
 
             lines_with_styling = DocumentAnalysis.filter_by_boundaries(lines_with_styling=lines_without_blanks, ocr=ocr)
             lines_without_numbers = Cleaner.clean_page_numbers(lines=lines_with_styling)
-            filtered_lines_with_styling = DocumentAnalysis.filter_dominant_font(lines_with_styling=lines_without_numbers)
-            cleaned_text = Cleaner.join_broken_sentences(lines=filtered_lines_with_styling)
+            cleaned_text = Cleaner.join_broken_sentences(lines=lines_without_numbers)
             page_text, multipage_parentheses = Cleaner.clean_extracted_text(text=cleaned_text,
                                                                                  multipage_parentheses=multipage_parentheses, ocr=ocr)
 

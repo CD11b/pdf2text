@@ -85,42 +85,39 @@ class Cleaner:
                 # Skip parentheses and their content
                 pairs = {'(': ')', '[': ']', '{': '}'}
 
-                if i != 0 and text[i - 1] == ' ':
+                if char in pairs or multipage_parentheses is not None:
 
-                    if char in pairs or multipage_parentheses is not None:
+                    if multipage_parentheses:
+                        open_char = multipage_parentheses
+                    else:
+                        open_char = char
 
+                    close_char = pairs[open_char]
+                    depth = 1
+                    i += 1
+                    iterations = 0
+                    while i < len(text) and depth >= 1:
 
-                        if multipage_parentheses:
-                            open_char = multipage_parentheses
-                        else:
-                            open_char = char
+                        if iterations >= 30 and ocr is True: # Misrecognized parentheses
+                            i -= 30
+                            result.append(open_char)
+                            break
 
-                        close_char = pairs[open_char]
-                        depth = 1
+                        if text[i] == open_char:
+                            depth += 1
+                        elif text[i] == close_char:
+                            depth -= 1
+                            multipage_parentheses = None
+                        elif i == len(text) - 1:
+                            multipage_parentheses = open_char
+
                         i += 1
-                        iterations = 0
-                        while i < len(text) and depth > 0:
+                        iterations += 1
 
-                            if iterations >= 30 and ocr is True: # Misrecognized parentheses
-                                i -= 30
-                                result.append(open_char)
-                                break
+                    if result and result[-1] == ' ': # Remove extra space
+                        result.pop()
 
-                            if text[i] == open_char:
-                                depth += 1
-                            elif text[i] == close_char:
-                                depth -= 1
-                                multipage_parentheses = None
-                            elif i == len(text) - 1:
-                                multipage_parentheses = open_char
-
-                            i += 1
-                            iterations += 1
-
-                        if result and result[-1] == ' ': # Remove extra space
-                            result.pop()
-
-                        continue
+                    continue
 
                 # Skip emojis and symbols
                 if (unicodedata.category(char)[0] in ['S'] or

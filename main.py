@@ -308,16 +308,18 @@ class DocumentAnalysis:
 
         font_size_counter = DocumentAnalysis.get_styling_counter(lines_with_styling=lines, styling_attribute="font_size")
         font_name_counter = DocumentAnalysis.get_styling_counter(lines_with_styling=lines, styling_attribute="font_name")
+        origin_x_counter = DocumentAnalysis.get_styling_counter(lines_with_styling=lines, styling_attribute="origin_x")
         origin_y_counter = DocumentAnalysis.get_styling_counter(lines_with_styling=lines, styling_attribute="origin_y")
 
         most_common_font_size = DocumentAnalysis.get_n_most_common(counter=font_size_counter, n=1)
         most_common_font_name = DocumentAnalysis.get_n_most_common(counter=font_name_counter, n=1)
+        most_common_origin_x = DocumentAnalysis.get_n_most_common(counter=origin_x_counter, n=1)
 
         font_size_expanded_data = []
         for value, freq in font_size_counter.items():
             font_size_expanded_data.extend([value] * freq)
 
-        return {'origin x': {'lower bound': DocumentAnalysis.get_word_gaps(lines=lines)[0], 'upper bound': DocumentAnalysis.get_word_gaps(lines=lines)[1]},
+        return {'origin x': {'most common': most_common_origin_x[0][0], 'lower bound': DocumentAnalysis.get_word_gaps(lines=lines)[0], 'upper bound': DocumentAnalysis.get_word_gaps(lines=lines)[1]},
                 'origin y': {'maximum': DocumentAnalysis.get_max_styling_attr(style_counter=origin_y_counter), 'lower bound': DocumentAnalysis.get_line_gaps(style_counter=origin_y_counter)[0], 'upper bound': DocumentAnalysis.get_line_gaps(style_counter=origin_y_counter)[1]},
                 'font size': {'most common': most_common_font_size[0][0], 'lower bound': DocumentAnalysis.get_styling_bounds(font_size_expanded_data)[0], 'upper bound': DocumentAnalysis.get_styling_bounds(font_size_expanded_data)[1]},
                 'font name': {'most common': most_common_font_name[0][0]}}

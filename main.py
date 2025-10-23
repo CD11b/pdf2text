@@ -149,6 +149,139 @@ class StyledLine:
         self.origin_x = round(self.origin_x)
         self.origin_y = round(self.origin_y)
 
+class TextHeuristics:
+    def __init__(self) -> None:
+        self.most_common_origin_x = None
+        self.most_common_font_name = None
+        self.most_common_font_size = None
+        self.threshold = None
+        self.font_size_counter = None
+        self.font_name_counter = None
+        self.origin_x_counter = None
+        self.origin_y_counter = None
+        self.font_size_lower_bound = None
+        self.font_size_upper_bound = None
+        self.origin_x_lower_bound = None
+        self.origin_x_upper_bound = None
+        self.origin_y_lower_bound = None
+        self.origin_y_upper_bound = None
+
+    @staticmethod
+    def get_styling_counter(lines: list, styling_attribute: str) -> Counter:
+
+        try:
+            counter = Counter()
+            for line in lines:
+                attr_value = getattr(line, styling_attribute)
+                counter[attr_value] += len(line.text)
+            return counter
+
+        except Exception as e:
+            logging.exception(f"Error getting style counter for {styling_attribute}: {e}")
+            raise
+
+    @staticmethod
+    def get_most_common(counter: Counter, n: int) -> list:
+
+        try:
+            return counter.most_common(n)[0][0]
+        except Exception as e:
+            logging.exception(f"Error finding most common style: {e}")
+            raise
+
+    def get_styling_bounds(self, data):
+        series = pd.Series(data)
+        mean = series.mean()
+        std = series.std()
+
+        if std == 0 or pd.isna(std):
+            return series.min(), series.max()
+
+        z_scores = (series - mean) / std
+        inlier_series = series[z_scores.abs() <= self.threshold]
+
+        if inlier_series.empty:
+            return series.min(), series.max()
+
+        return inlier_series.min(), inlier_series.max()
+
+    @staticmethod
+    def get_gap_differences(data):
+
+        differences = [abs(data[i] - data[i+1]) for i in range(len(data)-1)]
+
+        return differences
+
+    def get_word_gaps(self, lines):
+        i = 0
+        origin_x_differences = []
+        while i < len(lines):
+            current_word = lines[i]
+            line_y_boundary = current_word.origin_y
+            current_line = []
+
+            while i < len(lines) and lines[i].origin_y == line_y_boundary:
+                current_line.append(lines[i])
+                i += 1
+            origin_x_differences.extend(self.get_gap_differences([line.origin_x for line in current_line]))
+        lower_bound, upper_bound = self.get_styling_bounds(data=sorted(origin_x_differences))
+
+        return lower_bound, upper_bound
+
+    def get_line_gaps(self):
+        values = sorted(self.origin_y_counter, reverse=True)
+        differences = TextHeuristics.get_gap_differences(values)
+        lower_bound, upper_bound = self.get_styling_bounds(data=differences)
+
+        return lower_bound, upper_bound
+
+    @staticmethod
+    def get_min_styling_attr(style_counter):
+        return min(style_counter)
+
+    @staticmethod
+    def get_max_styling_attr(style_counter):
+        return max(style_counter)
+
+    def get_all_counters(self, lines):
+        self.font_size_counter = TextHeuristics.get_styling_counter(lines=lines, styling_attribute="font_size")
+        self.font_name_counter = TextHeuristics.get_styling_counter(lines=lines, styling_attribute="font_name")
+        self.origin_x_counter = TextHeuristics.get_styling_counter(lines=lines, styling_attribute="origin_x")
+        self.origin_y_counter = TextHeuristics.get_styling_counter(lines=lines, styling_attribute="origin_y")
+
+    def set_threshold(self, ocr):
+
+        if ocr:
+            self.threshold = 3.0
+        else:
+            self.threshold = 1.0
+
+    def setup(self, lines: list, ocr: bool) -> dict:
+
+        self.get_all_counters(lines=lines)
+
+        self.most_common_font_size = self.get_most_common(counter=self.font_size_counter, n=1)
+        self.most_common_font_name = self.get_most_common(counter=self.font_name_counter, n=1)
+        self.most_common_origin_x = self.get_most_common(counter=self.origin_x_counter, n=1)
+
+        self.set_threshold(ocr=ocr)
+
+        font_size_expanded_data = []
+        for value, freq in sorted(self.font_size_counter.items()):
+            font_size_expanded_data.extend([value] * freq)
+
+        self.get_styling_bounds(font_size_expanded_data)
+
+        self.get_word_gaps(lines=lines)
+        self.get_line_gaps()
+
+
+        return {'origin x': {'most common': self.most_common_origin_x, 'lower bound': self.origin_x_lower_bound, 'upper bound': self.origin_x_upper_bound},
+                'origin y': {'maximum': TextHeuristics.get_max_styling_attr(style_counter=self.origin_y_counter), 'lower bound': self.origin_y_lower_bound, 'upper bound': self.origin_y_upper_bound},
+                'font size': {'most common': self.most_common_font_size, 'lower bound': self.font_size_lower_bound, 'upper bound': self.font_size_upper_bound},
+                'font name': {'most common': self.most_common_font_name}}
+
+
 class DocumentAnalysis:
 
     def __init__(self):
@@ -191,22 +324,30 @@ class DocumentAnalysis:
             logging.exception(f"Error reading styles from PDF blocks: {e}")
             raise
 
-    @staticmethod
-    def get_styling_counter(lines_with_styling: list, styling_attribute: str) -> Counter:
+    # @staticmethod
+    # def separate_by_paragraph(lines_with_styling: list):
 
-        try:
-            counter = Counter()
-            for line in lines_with_styling:
-                attr_value = getattr(line, styling_attribute)
-                counter[attr_value] += len(line.text)
-            return counter
+    def check_ocr(self, lines_with_styling: list) -> bool:
 
-        except Exception as e:
-            logging.exception(f"Error getting style counter for {styling_attribute}: {e}")
-            raise
+        if len(lines_with_styling) == 0:
+            return False
 
-    @staticmethod
-    def get_n_most_common(counter: Counter, n: int) -> list:
+        words = 1
+        phrases = 1
+
+        for i, line in enumerate(lines_with_styling):
+
+            if line.text.strip() is None:
+                continue
+            elif " " not in line.text.strip():
+                words += 1
+            else:
+                phrases += 1
+
+        if words / phrases > 0.75:
+            return True
+        else:
+            return False
 
     def is_at_left_margin(self, line):
         return line.origin_x == self.left_boundary
@@ -232,7 +373,8 @@ class DocumentAnalysis:
 
     def set_page_boundaries(self):
 
-        return differences
+        self.left_boundary = self.font_heuristics['origin x']['most common']
+        self.bottom_boundary = self.font_heuristics['origin y']['maximum']
 
     def filter_by_boundaries(self, lines_with_styling, ocr: bool):
 
@@ -280,7 +422,7 @@ class DocumentAnalysis:
         current_line = []
 
         self.page_heuristics = TextHeuristics()
-        self.page_heuristics.get_page_heuristics(lines=lines_with_styling, ocr=ocr)
+        self.page_heuristics.setup(lines=lines_with_styling, ocr=ocr)
         self.set_page_boundaries()
 
         i = 0

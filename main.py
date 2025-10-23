@@ -141,13 +141,15 @@ class StyledLine:
     text: str
     font_size: float
     font_name: str
-    origin_x: float
-    origin_y: float
+    start_x: float
+    start_y: float
+    end_x: float
 
     def __post_init__(self):
         self.font_size = round(self.font_size)
-        self.origin_x = round(self.origin_x)
-        self.origin_y = round(self.origin_y)
+        self.start_x = round(self.start_x)
+        self.start_y = round(self.start_y)
+        self.end_x = round(self.end_x)
 
 class TextHeuristics:
     def __init__(self) -> None:
@@ -198,16 +200,16 @@ class TextHeuristics:
 
     def compute_word_gaps(self, lines):
 
-        origin_x_differences = []
+        start_x_differences = []
 
-        for _, group in pd.DataFrame(lines).groupby("origin_y"):
-            origin_x_differences.extend(TextHeuristics.compute_differences(group["origin_x"].tolist()))
+        for _, group in pd.DataFrame(lines).groupby("start_y"):
+            start_x_differences.extend(TextHeuristics.compute_differences(group["start_x"].tolist()))
 
-        return self.compute_bounds(data=sorted(origin_x_differences))
+        return self.compute_bounds(data=sorted(start_x_differences))
 
-    def compute_line_gaps(self, origin_y_counter):
+    def compute_line_gaps(self, start_y_counter):
 
-        differences = TextHeuristics.compute_differences(sorted(origin_y_counter))
+        differences = TextHeuristics.compute_differences(sorted(start_y_counter))
 
         return self.compute_bounds(data=differences)
 
@@ -222,7 +224,7 @@ class TextHeuristics:
 
         counters = {
             attr: self.get_styling_counter(lines, attr)
-            for attr in ['font_size', 'font_name', 'origin_x', 'origin_y']
+            for attr in ['font_size', 'font_name', 'start_x', 'start_y']
         }
 
         most_common = {k: self.most_common_value(v) for k, v in counters.items()}
@@ -233,11 +235,11 @@ class TextHeuristics:
         font_bounds = self.compute_bounds(font_sizes)
 
         word_gaps = self.compute_word_gaps(lines=lines)
-        line_gaps = self.compute_line_gaps(counters['origin_y'])
+        line_gaps = self.compute_line_gaps(counters['start_y'])
 
 
-        return {'origin x': {'most common': most_common['origin_x'], 'minimum': min(counters['origin_x']), 'maximum': max(counters['origin_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
-                'origin y': {'most common': most_common['origin_y'], 'minimum': min(counters['origin_x']), 'maximum': max(counters['origin_y']), 'lower bound': line_gaps[0], 'upper bound': line_gaps[1]},
+        return {'start x': {'most common': most_common['start_x'], 'minimum': min(counters['start_x']), 'maximum': max(counters['start_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
+                'start y': {'most common': most_common['start_y'], 'minimum': min(counters['start_x']), 'maximum': max(counters['start_y']), 'lower bound': line_gaps[0], 'upper bound': line_gaps[1]},
                 'font size': {'most common': most_common['font_size'], 'lower bound': font_bounds[0], 'upper bound': font_bounds[1]},
                 'font name': {'most common': most_common['font_name']}}
 
@@ -276,7 +278,7 @@ class DocumentAnalysis:
                     for span in line["spans"]:
                         text = "".join(span["text"]).strip()
                         if text:
-                            yield StyledLine(text, span["size"], span["font"], span["origin"][0], span["origin"][1])
+                            yield StyledLine(text, span["size"], span["font"], span["origin"][0], span["origin"][1], span["bbox"][2])
 
 
         except Exception as e:
@@ -309,31 +311,31 @@ class DocumentAnalysis:
             return False
 
     def is_at_left_margin(self, line):
-        return line.origin_x == self.left_boundary
+        return line.start_x == self.left_boundary
 
     def is_after_left_margin(self, line):
-        return line.origin_x > self.left_boundary
+        return line.start_x > self.left_boundary
 
     def is_before_left_margin(self, line):
-        return line.origin_x < self.left_boundary
+        return line.start_x < self.left_boundary
 
     def is_footer_region(self, line):
-        return line.origin_y >= self.bottom_boundary - self.page_heuristics['origin y']['lower bound']
+        return line.start_y >= self.bottom_boundary - self.page_heuristics['start y']['lower bound']
 
     def is_header_region(self):
         return self.top_boundary is None
 
     def is_dominant_word_gap(self, current_word, next_word):
-        word_separation = next_word.origin_x - current_word.origin_x
-        return self.page_heuristics['origin x']['lower bound'] <= word_separation <= self.page_heuristics['origin x']['upper bound']
+        word_separation = next_word.start_x - current_word.start_x
+        return self.page_heuristics['start x']['lower bound'] <= word_separation <= self.page_heuristics['start x']['upper bound']
 
     def is_dominant_font(self, line):
         return self.page_heuristics['font size']['lower bound'] <= line.font_size <= self.page_heuristics['font size']['upper bound']
 
     def set_page_boundaries(self):
 
-        self.left_boundary = self.page_heuristics['origin x']['most common']
-        self.bottom_boundary = self.page_heuristics['origin y']['maximum']
+        self.left_boundary = self.page_heuristics['start x']['most common']
+        self.bottom_boundary = self.page_heuristics['start y']['maximum']
 
     def setup(self, lines_with_styling, ocr):
 
@@ -350,13 +352,13 @@ class DocumentAnalysis:
     def filter_by_boundaries(self, lines_with_styling, ocr):
 
         def skip_line(i, y_boundary):
-            while i < len(lines_with_styling) and lines_with_styling[i].origin_y == y_boundary:
+            while i < len(lines_with_styling) and lines_with_styling[i].start_y == y_boundary:
                 i += 1
             return i
 
         def collect_line(i, y_boundary):
             current_line = []
-            while i <= len(lines_with_styling) - 1 and lines_with_styling[i].origin_y == y_boundary:
+            while i <= len(lines_with_styling) - 1 and lines_with_styling[i].start_y == y_boundary:
                 current_line.append(lines_with_styling[i])
                 i += 1
             return current_line, i
@@ -375,7 +377,7 @@ class DocumentAnalysis:
         while i < len(lines_with_styling):
 
             current_word = lines_with_styling[i]
-            line_y_boundary = current_word.origin_y
+            line_y_boundary = current_word.start_y
 
             if self.is_header_region():
 
@@ -387,25 +389,25 @@ class DocumentAnalysis:
                     gap_to_next_line = 0
                     j = i
                     while gap_to_next_line == 0:
-                        gap_to_next_line = lines_with_styling[j + 1].origin_y - lines_with_styling[i].origin_y
+                        gap_to_next_line = lines_with_styling[j + 1].start_y - lines_with_styling[i].start_y
                         j += 1
 
-                    if gap_to_next_line > self.page_heuristics['origin y']['upper bound']:  # Aligned header
+                    if gap_to_next_line > self.page_heuristics['start y']['upper bound']:  # Aligned header
                         i = skip_line(i, line_y_boundary)
 
                     else:
-                        self.top_boundary = current_word.origin_y
+                        self.top_boundary = current_word.start_y
                         current_line, i = collect_line(i, line_y_boundary)
 
                 elif self.is_after_left_margin(line=current_word):  # Edge case: Indented main body
 
-                    if current_word.origin_x - self.page_heuristics['origin x'][
+                    if current_word.start_x - self.page_heuristics['start x'][
                         'lower bound'] > self.left_boundary:  # Indented header
                         i = skip_line(i, line_y_boundary)
 
                     elif self.is_dominant_font(line=current_word):
 
-                        self.top_boundary = current_word.origin_y
+                        self.top_boundary = current_word.start_y
                         current_line, i = collect_line(i, line_y_boundary)
 
                     else:
@@ -416,9 +418,9 @@ class DocumentAnalysis:
 
             elif self.is_footer_region(line=current_word):  # Very bottom
 
-                if lines_with_styling[i].origin_x == filtered_lines[-1].origin_x:  # Continued indented block
+                if lines_with_styling[i].start_x == filtered_lines[-1].start_x:  # Continued indented block
 
-                    while lines_with_styling[i].origin_y <= line_y_boundary:
+                    while lines_with_styling[i].start_y <= line_y_boundary:
 
                         if i == len(lines_with_styling) - 1:
                             i = collect_once(i)
@@ -442,7 +444,7 @@ class DocumentAnalysis:
                 else:  # Edge case: Aligned title
                     i = skip_line(i, line_y_boundary)
 
-            elif lines_with_styling[i].origin_y < filtered_lines[-1].origin_y:  # Titles outside regular read-order
+            elif lines_with_styling[i].start_y < filtered_lines[-1].start_y:  # Titles outside regular read-order
 
                 if self.is_dominant_font(line=current_word):  # Edge case: Indented main body
                     current_line, i = collect_line(i, line_y_boundary)
@@ -452,11 +454,11 @@ class DocumentAnalysis:
 
             elif self.is_after_left_margin(current_word):  # Indented block
 
-                if i == len(lines_with_styling) - 1 and lines_with_styling[i].origin_y == line_y_boundary:
+                if i == len(lines_with_styling) - 1 and lines_with_styling[i].start_y == line_y_boundary:
                     i = collect_once(i)
 
                 elif i < len(lines_with_styling) - 1:
-                    while lines_with_styling[i].origin_y == line_y_boundary:
+                    while lines_with_styling[i].start_y == line_y_boundary:
 
                         if self.is_dominant_word_gap(current_word=lines_with_styling[i], next_word=lines_with_styling[i + 1]):
                             current_line, i = collect_line(i, line_y_boundary)
@@ -477,8 +479,9 @@ class DocumentAnalysis:
                 filtered_lines.append(StyledLine(text=' '.join(line.text for line in current_line if line.text.strip()),
                                                  font_size=pd.Series([line.font_size for line in current_line]).mean(),
                                                  font_name=current_word.font_name,
-                                                 origin_x=current_word.origin_x,
-                                                 origin_y=current_word.origin_y))
+                                                 start_x=current_word.start_x,
+                                                 start_y=current_word.start_y,
+                                                 end_x=current_word.end_x))
                 current_line = []
 
         return filtered_lines

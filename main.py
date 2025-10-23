@@ -141,8 +141,13 @@ class StyledLine:
     text: str
     font_size: float
     font_name: str
-    origin_x: int
-    origin_y: int
+    origin_x: float
+    origin_y: float
+
+    def __post_init__(self):
+        self.font_size = round(self.font_size)
+        self.origin_x = round(self.origin_x)
+        self.origin_y = round(self.origin_y)
 
 class DocumentAnalysis:
 
@@ -173,7 +178,9 @@ class DocumentAnalysis:
 
                 for line in block["lines"]:
                     for span in line["spans"]:
-                        yield StyledLine("".join(span["text"]).strip(), span["size"], span["font"], span["origin"][0], span["origin"][1])
+                        text = "".join(span["text"]).strip()
+                        if text:
+                            yield StyledLine(text, span["size"], span["font"], span["origin"][0], span["origin"][1])
 
 
         except Exception as e:
@@ -187,8 +194,6 @@ class DocumentAnalysis:
             counter = Counter()
             for line in lines_with_styling:
                 attr_value = getattr(line, styling_attribute)
-                if isinstance(attr_value, float):
-                    attr_value = round(attr_value)
                 counter[attr_value] += len(line.text)
             return counter
 
@@ -265,13 +270,13 @@ class DocumentAnalysis:
         origin_x_differences = []
         while i < len(lines):
             current_word = lines[i]
-            line_y_boundary = round(current_word.origin_y)
+            line_y_boundary = current_word.origin_y
             current_line = []
 
-            while i < len(lines) and round(lines[i].origin_y) == line_y_boundary:
+            while i < len(lines) and lines[i].origin_y == line_y_boundary:
                 current_line.append(lines[i])
                 i += 1
-            origin_x_differences.extend(DocumentAnalysis.get_gap_differences([round(line.origin_x) for line in current_line]))
+            origin_x_differences.extend(DocumentAnalysis.get_gap_differences([line.origin_x for line in current_line]))
         lower_bound, upper_bound = DocumentAnalysis.get_styling_bounds(sorted(origin_x_differences), threshold=threshold)
 
         return lower_bound, upper_bound
@@ -341,65 +346,65 @@ class DocumentAnalysis:
         while i < len(lines_with_styling):
 
             current_word = lines_with_styling[i]
-            line_y_boundary = round(current_word.origin_y)
+            line_y_boundary = current_word.origin_y
 
             if top_boundary is None: # Removing headers
                 
-                if round(current_word.origin_x) < left_boundary: # Header
-                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                if current_word.origin_x < left_boundary: # Header
+                    while lines_with_styling[i].origin_y == line_y_boundary:
                         i += 1
 
-                elif round(current_word.origin_x) == left_boundary:  # Body start
+                elif current_word.origin_x == left_boundary:  # Body start
 
                     gap_to_next_line = 0
                     j = i
                     while gap_to_next_line == 0:
-                        gap_to_next_line = round(lines_with_styling[j + 1].origin_y) - round(lines_with_styling[i].origin_y)
+                        gap_to_next_line = lines_with_styling[j + 1].origin_y - lines_with_styling[i].origin_y
                         j += 1
 
                     if gap_to_next_line > font_heuristics['origin y']['upper bound']: # Aligned header
-                        while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        while lines_with_styling[i].origin_y == line_y_boundary:
                             i += 1
                     else:
-                        top_boundary = round(current_word.origin_y)
-                        while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        top_boundary = current_word.origin_y
+                        while lines_with_styling[i].origin_y == line_y_boundary:
                             current_line.append(lines_with_styling[i])
                             i += 1
 
-                elif round(current_word.origin_x) > left_boundary: # Edge case: Indented main body
+                elif current_word.origin_x > left_boundary: # Edge case: Indented main body
 
-                    if round(current_word.origin_x) - font_heuristics['origin x']['lower bound'] > left_boundary: # Indented header
-                        while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    if current_word.origin_x - font_heuristics['origin x']['lower bound'] > left_boundary: # Indented header
+                        while lines_with_styling[i].origin_y == line_y_boundary:
                             i += 1
 
-                    elif font_heuristics['font size']['lower bound'] <= round(current_word.font_size) <= font_heuristics['font size']['upper bound']:
+                    elif font_heuristics['font size']['lower bound'] <= current_word.font_size <= font_heuristics['font size']['upper bound']:
 
-                        top_boundary = round(current_word.origin_y)
+                        top_boundary = current_word.origin_y
 
-                        while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        while lines_with_styling[i].origin_y == line_y_boundary:
                             current_line.append(lines_with_styling[i])
                             i += 1
 
                     else:
-                        while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                        while lines_with_styling[i].origin_y == line_y_boundary:
                             i += 1
 
                 else:
-                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    while lines_with_styling[i].origin_y == line_y_boundary:
                         i += 1
 
             elif lines_with_styling[i].origin_y >= bottom_boundary - font_heuristics['origin y']['lower bound']: # Very bottom
 
-                if round(lines_with_styling[i].origin_x) == round(filtered_lines[-1].origin_x): # Continued indented block
+                if lines_with_styling[i].origin_x == filtered_lines[-1].origin_x: # Continued indented block
 
-                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    while lines_with_styling[i].origin_y == line_y_boundary:
 
                         if i == len(lines_with_styling) - 1:
                             current_line.append(lines_with_styling[i])
                             i += 1
                             break
                         else:
-                            word_separation = round(lines_with_styling[i + 1].origin_x) - round(lines_with_styling[i].origin_x)
+                            word_separation = lines_with_styling[i + 1].origin_x - lines_with_styling[i].origin_x
 
                             if font_heuristics['origin x']['lower bound'] <= word_separation <= font_heuristics['origin x']['upper bound']: # Doesn't work for non-ocr
                                 current_line.append(lines_with_styling[i])
@@ -410,40 +415,40 @@ class DocumentAnalysis:
                                 break
 
                 else:
-                    while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary: # Footer
+                    while i < len(lines_with_styling) and lines_with_styling[i].origin_y == line_y_boundary: # Footer
                         i += 1
 
-            elif round(current_word.origin_x) == left_boundary: # Main body
+            elif current_word.origin_x == left_boundary: # Main body
 
-                if font_heuristics['font size']['lower bound'] <= round(lines_with_styling[i].font_size) <= font_heuristics['font size']['upper bound']:
-                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                if font_heuristics['font size']['lower bound'] <= lines_with_styling[i].font_size <= font_heuristics['font size']['upper bound']:
+                    while lines_with_styling[i].origin_y == line_y_boundary:
                         current_line.append(lines_with_styling[i])
                         i += 1
 
                 else: # Edge case: Aligned title
-                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    while lines_with_styling[i].origin_y == line_y_boundary:
                         i += 1
 
-            elif round(lines_with_styling[i].origin_y) < round(filtered_lines[-1].origin_y): # Titles outside regular read-order
+            elif lines_with_styling[i].origin_y < filtered_lines[-1].origin_y: # Titles outside regular read-order
 
                 if lines_with_styling[i].font_size == font_heuristics['font size']['most common']: # Edge case: Indented main body
-                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    while lines_with_styling[i].origin_y == line_y_boundary:
                         current_line.append(lines_with_styling[i])
                         i += 1
                 else:
-                    while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    while i < len(lines_with_styling) and lines_with_styling[i].origin_y == line_y_boundary:
                         i += 1
 
-            elif round(current_word.origin_x) > left_boundary: # Indented block
+            elif current_word.origin_x > left_boundary: # Indented block
 
-                if i == len(lines_with_styling) - 1 and round(lines_with_styling[i].origin_y) == line_y_boundary:
+                if i == len(lines_with_styling) - 1 and lines_with_styling[i].origin_y == line_y_boundary:
                     current_line.append(lines_with_styling[i])
                     i += 1
 
                 elif i < len(lines_with_styling) - 1:
-                    while round(lines_with_styling[i].origin_y) == line_y_boundary:
+                    while lines_with_styling[i].origin_y == line_y_boundary:
 
-                        word_separation = round(lines_with_styling[i + 1].origin_x) - round(lines_with_styling[i].origin_x)
+                        word_separation = lines_with_styling[i + 1].origin_x - lines_with_styling[i].origin_x
 
                         if font_heuristics['origin x']['lower bound'] <= word_separation <= font_heuristics['origin x']['upper bound']:
                             current_line.append(lines_with_styling[i])
@@ -453,8 +458,8 @@ class DocumentAnalysis:
                             i += 1
                             break
 
-            elif round(current_word.origin_x) < left_boundary:  # Left-side footer
-                while i < len(lines_with_styling) and round(lines_with_styling[i].origin_y) == line_y_boundary:
+            elif current_word.origin_x < left_boundary:  # Left-side footer
+                while i < len(lines_with_styling) and lines_with_styling[i].origin_y == line_y_boundary:
                     i += 1
             else:
                 i += 1
@@ -464,10 +469,10 @@ class DocumentAnalysis:
                 # for word in current_line:
 
                 filtered_lines.append(StyledLine(text=' '.join(line.text for line in current_line if line.text.strip()),
-                                                 font_size=round(pd.Series([line.font_size for line in current_line]).mean()),
+                                                 font_size=pd.Series([line.font_size for line in current_line]).mean(),
                                                  font_name=current_word.font_name,
-                                                 origin_x=round(current_word.origin_x),
-                                                 origin_y=round(current_word.origin_y)))
+                                                 origin_x=current_word.origin_x,
+                                                 origin_y=current_word.origin_y))
                 current_line = []
 
 

@@ -210,22 +210,16 @@ class TextHeuristics:
         return [abs(data[i] - data[i+1]) for i in range(len(data)-1)]
 
     def compute_word_gaps(self, lines):
-        i = 0
-        origin_x_differences = []
-        while i < len(lines):
-            current_word = lines[i]
-            line_y_boundary = current_word.origin_y
-            current_line = []
 
-            while i < len(lines) and lines[i].origin_y == line_y_boundary:
-                current_line.append(lines[i])
-                i += 1
-            origin_x_differences.extend(TextHeuristics.compute_differences([line.origin_x for line in current_line]))
+        origin_x_differences = []
+
+        for _, group in pd.DataFrame(lines).groupby("origin_y"):
+            origin_x_differences.extend(TextHeuristics.compute_differences(group["origin_x"].tolist()))
+
         self.origin_x_lower_bound, self.origin_x_upper_bound = self.compute_bounds(data=sorted(origin_x_differences))
 
     def compute_line_gaps(self, origin_y_counter):
-        values = sorted(origin_y_counter, reverse=True)
-        differences = TextHeuristics.compute_differences(values)
+        differences = TextHeuristics.compute_differences(sorted(origin_y_counter))
         self.origin_y_lower_bound, self.origin_y_upper_bound = self.compute_bounds(data=differences)
 
     def set_threshold(self, ocr):

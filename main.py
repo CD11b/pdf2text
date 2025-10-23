@@ -151,20 +151,7 @@ class StyledLine:
 
 class TextHeuristics:
     def __init__(self) -> None:
-        self.most_common_origin_x = None
-        self.most_common_font_name = None
-        self.most_common_font_size = None
         self.threshold = None
-        self.font_size_counter = None
-        self.font_name_counter = None
-        self.origin_x_counter = None
-        self.origin_y_counter = None
-        self.font_size_lower_bound = None
-        self.font_size_upper_bound = None
-        self.origin_x_lower_bound = None
-        self.origin_x_upper_bound = None
-        self.origin_y_lower_bound = None
-        self.origin_y_upper_bound = None
 
     @staticmethod
     def get_styling_counter(lines: list, attribute: str) -> Counter:
@@ -216,11 +203,13 @@ class TextHeuristics:
         for _, group in pd.DataFrame(lines).groupby("origin_y"):
             origin_x_differences.extend(TextHeuristics.compute_differences(group["origin_x"].tolist()))
 
-        self.origin_x_lower_bound, self.origin_x_upper_bound = self.compute_bounds(data=sorted(origin_x_differences))
+        return self.compute_bounds(data=sorted(origin_x_differences))
 
     def compute_line_gaps(self, origin_y_counter):
+
         differences = TextHeuristics.compute_differences(sorted(origin_y_counter))
-        self.origin_y_lower_bound, self.origin_y_upper_bound = self.compute_bounds(data=differences)
+
+        return self.compute_bounds(data=differences)
 
     def set_threshold(self, ocr):
 
@@ -243,13 +232,12 @@ class TextHeuristics:
         font_sizes = [size for size, freq in counters['font_size'].items() for _ in range(freq)]
         font_bounds = self.compute_bounds(font_sizes)
 
+        word_gaps = self.compute_word_gaps(lines=lines)
+        line_gaps = self.compute_line_gaps(counters['origin_y'])
 
-        self.compute_word_gaps(lines=lines)
-        self.compute_line_gaps(counters['origin_y'])
 
-
-        return {'origin x': {'most common': most_common['origin_x'], 'minimum': min(counters['origin_x']), 'maximum': max(counters['origin_x']), 'lower bound': self.origin_x_lower_bound, 'upper bound': self.origin_x_upper_bound},
-                'origin y': {'most common': most_common['origin_y'], 'minimum': min(counters['origin_x']), 'maximum': max(counters['origin_y']), 'lower bound': self.origin_y_lower_bound, 'upper bound': self.origin_y_upper_bound},
+        return {'origin x': {'most common': most_common['origin_x'], 'minimum': min(counters['origin_x']), 'maximum': max(counters['origin_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
+                'origin y': {'most common': most_common['origin_y'], 'minimum': min(counters['origin_x']), 'maximum': max(counters['origin_y']), 'lower bound': line_gaps[0], 'upper bound': line_gaps[1]},
                 'font size': {'most common': most_common['font_size'], 'lower bound': font_bounds[0], 'upper bound': font_bounds[1]},
                 'font name': {'most common': most_common['font_name']}}
 

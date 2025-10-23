@@ -167,29 +167,28 @@ class TextHeuristics:
         self.origin_y_upper_bound = None
 
     @staticmethod
-    def get_styling_counter(lines: list, styling_attribute: str) -> Counter:
+    def get_styling_counter(lines: list, attribute: str) -> Counter:
 
         try:
             counter = Counter()
             for line in lines:
-                attr_value = getattr(line, styling_attribute)
+                attr_value = getattr(line, attribute)
                 counter[attr_value] += len(line.text)
             return counter
 
+        except AttributeError as e:
+            logging.exception(f"Invalid styling attribute: {attribute}")
+            raise
         except Exception as e:
-            logging.exception(f"Error getting style counter for {styling_attribute}: {e}")
+            logging.exception(f"Error getting style counter for {attribute}: {e}")
             raise
 
     @staticmethod
-    def get_most_common(counter: Counter, n: int) -> list:
+    def most_common_value(counter: Counter):
 
-        try:
-            return counter.most_common(n)[0][0]
-        except Exception as e:
-            logging.exception(f"Error finding most common style: {e}")
-            raise
+        return counter.most_common(1)[0][0] if counter else None
 
-    def get_styling_bounds(self, data):
+    def compute_bounds(self, data):
         series = pd.Series(data)
         mean = series.mean()
         std = series.std()
@@ -206,13 +205,11 @@ class TextHeuristics:
         return inlier_series.min(), inlier_series.max()
 
     @staticmethod
-    def get_gap_differences(data):
+    def compute_differences(data):
 
-        differences = [abs(data[i] - data[i+1]) for i in range(len(data)-1)]
+        return [abs(data[i] - data[i+1]) for i in range(len(data)-1)]
 
-        return differences
-
-    def get_word_gaps(self, lines):
+    def compute_word_gaps(self, lines):
         i = 0
         origin_x_differences = []
         while i < len(lines):
@@ -223,31 +220,13 @@ class TextHeuristics:
             while i < len(lines) and lines[i].origin_y == line_y_boundary:
                 current_line.append(lines[i])
                 i += 1
-            origin_x_differences.extend(self.get_gap_differences([line.origin_x for line in current_line]))
-        lower_bound, upper_bound = self.get_styling_bounds(data=sorted(origin_x_differences))
+            origin_x_differences.extend(TextHeuristics.compute_differences([line.origin_x for line in current_line]))
+        self.origin_x_lower_bound, self.origin_x_upper_bound = self.compute_bounds(data=sorted(origin_x_differences))
 
-        return lower_bound, upper_bound
-
-    def get_line_gaps(self):
-        values = sorted(self.origin_y_counter, reverse=True)
-        differences = TextHeuristics.get_gap_differences(values)
-        lower_bound, upper_bound = self.get_styling_bounds(data=differences)
-
-        return lower_bound, upper_bound
-
-    @staticmethod
-    def get_min_styling_attr(style_counter):
-        return min(style_counter)
-
-    @staticmethod
-    def get_max_styling_attr(style_counter):
-        return max(style_counter)
-
-    def get_all_counters(self, lines):
-        self.font_size_counter = TextHeuristics.get_styling_counter(lines=lines, styling_attribute="font_size")
-        self.font_name_counter = TextHeuristics.get_styling_counter(lines=lines, styling_attribute="font_name")
-        self.origin_x_counter = TextHeuristics.get_styling_counter(lines=lines, styling_attribute="origin_x")
-        self.origin_y_counter = TextHeuristics.get_styling_counter(lines=lines, styling_attribute="origin_y")
+    def compute_line_gaps(self, origin_y_counter):
+        values = sorted(origin_y_counter, reverse=True)
+        differences = TextHeuristics.compute_differences(values)
+        self.origin_y_lower_bound, self.origin_y_upper_bound = self.compute_bounds(data=differences)
 
     def set_threshold(self, ocr):
 
@@ -256,30 +235,29 @@ class TextHeuristics:
         else:
             self.threshold = 1.0
 
-    def setup(self, lines: list, ocr: bool) -> dict:
+    def analyze(self, lines: list, ocr: bool) -> dict:
 
-        self.get_all_counters(lines=lines)
+        counters = {
+            attr: self.get_styling_counter(lines, attr)
+            for attr in ['font_size', 'font_name', 'origin_x', 'origin_y']
+        }
 
-        self.most_common_font_size = self.get_most_common(counter=self.font_size_counter, n=1)
-        self.most_common_font_name = self.get_most_common(counter=self.font_name_counter, n=1)
-        self.most_common_origin_x = self.get_most_common(counter=self.origin_x_counter, n=1)
+        most_common = {k: self.most_common_value(v) for k, v in counters.items()}
 
         self.set_threshold(ocr=ocr)
 
-        font_size_expanded_data = []
-        for value, freq in sorted(self.font_size_counter.items()):
-            font_size_expanded_data.extend([value] * freq)
-
-        self.get_styling_bounds(font_size_expanded_data)
-
-        self.get_word_gaps(lines=lines)
-        self.get_line_gaps()
+        font_sizes = [size for size, freq in counters['font_size'].items() for _ in range(freq)]
+        font_bounds = self.compute_bounds(font_sizes)
 
 
-        return {'origin x': {'most common': self.most_common_origin_x, 'lower bound': self.origin_x_lower_bound, 'upper bound': self.origin_x_upper_bound},
-                'origin y': {'maximum': TextHeuristics.get_max_styling_attr(style_counter=self.origin_y_counter), 'lower bound': self.origin_y_lower_bound, 'upper bound': self.origin_y_upper_bound},
-                'font size': {'most common': self.most_common_font_size, 'lower bound': self.font_size_lower_bound, 'upper bound': self.font_size_upper_bound},
-                'font name': {'most common': self.most_common_font_name}}
+        self.compute_word_gaps(lines=lines)
+        self.compute_line_gaps(counters['origin_y'])
+
+
+        return {'origin x': {'most common': most_common['origin_x'], 'minimum': min(counters['origin_x']), 'maximum': max(counters['origin_x']), 'lower bound': self.origin_x_lower_bound, 'upper bound': self.origin_x_upper_bound},
+                'origin y': {'most common': most_common['origin_y'], 'minimum': min(counters['origin_x']), 'maximum': max(counters['origin_y']), 'lower bound': self.origin_y_lower_bound, 'upper bound': self.origin_y_upper_bound},
+                'font size': {'most common': most_common['font_size'], 'lower bound': font_bounds[0], 'upper bound': font_bounds[1]},
+                'font name': {'most common': most_common['font_name']}}
 
 
 class DocumentAnalysis:
@@ -289,7 +267,6 @@ class DocumentAnalysis:
         self.bottom_boundary = None
         self.top_boundary = None
         self.left_boundary = None
-        self.font_heuristics = None
 
     @staticmethod
     def get_page_blocks_from_dict(pdf: pymupdf.Document, page_number: int, sort: bool) -> list:
@@ -359,54 +336,37 @@ class DocumentAnalysis:
         return line.origin_x < self.left_boundary
 
     def is_footer_region(self, line):
-        return line.origin_y >= self.bottom_boundary - self.font_heuristics['origin y']['lower bound']
+        return line.origin_y >= self.bottom_boundary - self.page_heuristics['origin y']['lower bound']
 
     def is_header_region(self):
         return self.top_boundary is None
 
     def is_dominant_word_gap(self, current_word, next_word):
         word_separation = next_word.origin_x - current_word.origin_x
-        return self.font_heuristics['origin x']['lower bound'] <= word_separation <= self.font_heuristics['origin x']['upper bound']
+        return self.page_heuristics['origin x']['lower bound'] <= word_separation <= self.page_heuristics['origin x']['upper bound']
 
     def is_dominant_font(self, line):
-        return self.font_heuristics['font size']['lower bound'] <= line.font_size <= self.font_heuristics['font size']['upper bound']
+        return self.page_heuristics['font size']['lower bound'] <= line.font_size <= self.page_heuristics['font size']['upper bound']
 
     def set_page_boundaries(self):
 
-        self.left_boundary = self.font_heuristics['origin x']['most common']
-        self.bottom_boundary = self.font_heuristics['origin y']['maximum']
+        self.left_boundary = self.page_heuristics['origin x']['most common']
+        self.bottom_boundary = self.page_heuristics['origin y']['maximum']
 
-    def filter_by_boundaries(self, lines_with_styling, ocr: bool):
+    def setup(self, lines_with_styling, ocr):
+
+        page_heuristics = TextHeuristics()
+        self.page_heuristics = page_heuristics.analyze(lines=lines_with_styling, ocr=ocr)
+        self.set_page_boundaries()
+
+    def filter_by_boundaries(self, lines_with_styling, ocr):
 
         def skip_line(i, y_boundary):
             while i < len(lines_with_styling) and lines_with_styling[i].origin_y == y_boundary:
                 i += 1
             return i
 
-        words = 1
-        phrases = 1
-
-        for i, line in enumerate(lines_with_styling):
-
-            if line.text.strip() is None:
-                continue
-            elif " " not in line.text.strip():
-                words += 1
-            else:
-                phrases += 1
-
-        if words / phrases > 0.75:
-            return True
-        else:
-            return False
-
-    @staticmethod
-    def get_word_gaps(lines, threshold):
-        i = 0
-        origin_x_differences = []
-        while i < len(lines):
-            current_word = lines[i]
-            line_y_boundary = current_word.origin_y
+        def collect_line(i, y_boundary):
             current_line = []
             while i <= len(lines_with_styling) - 1 and lines_with_styling[i].origin_y == y_boundary:
                 current_line.append(lines_with_styling[i])
@@ -421,9 +381,7 @@ class DocumentAnalysis:
         filtered_lines: list[StyledLine] = []
         current_line = []
 
-        self.page_heuristics = TextHeuristics()
-        self.page_heuristics.setup(lines=lines_with_styling, ocr=ocr)
-        self.set_page_boundaries()
+        self.setup(lines_with_styling, ocr)
 
         i = 0
         while i < len(lines_with_styling):
@@ -444,7 +402,7 @@ class DocumentAnalysis:
                         gap_to_next_line = lines_with_styling[j + 1].origin_y - lines_with_styling[i].origin_y
                         j += 1
 
-                    if gap_to_next_line > self.font_heuristics['origin y']['upper bound']:  # Aligned header
+                    if gap_to_next_line > self.page_heuristics['origin y']['upper bound']:  # Aligned header
                         i = skip_line(i, line_y_boundary)
 
                     else:
@@ -453,7 +411,7 @@ class DocumentAnalysis:
 
                 elif self.is_after_left_margin(line=current_word):  # Edge case: Indented main body
 
-                    if current_word.origin_x - self.font_heuristics['origin x'][
+                    if current_word.origin_x - self.page_heuristics['origin x'][
                         'lower bound'] > self.left_boundary:  # Indented header
                         i = skip_line(i, line_y_boundary)
 
@@ -535,11 +493,8 @@ class DocumentAnalysis:
                                                  origin_y=current_word.origin_y))
                 current_line = []
 
-
         return filtered_lines
 
-    # @staticmethod
-    # def separate_by_paragraph(lines_with_styling: list):
 
 class PDFReader:
     def __init__(self, pdf_path: str):

@@ -566,13 +566,11 @@ def main():
 
 
             lines_with_styling = list(DocumentAnalysis.iter_pdf_styling_from_blocks(page_blocks=page_blocks))
-            lines_without_blanks = [line for line in lines_with_styling if line.text.strip()]
-
             ocr = False
             if DocumentAnalysis.check_ocr(lines_with_styling=lines_with_styling):
                 ocr = True
 
-            lines_with_styling = DocumentAnalysis.filter_by_boundaries(lines_with_styling=lines_without_blanks, ocr=ocr)
+            lines_with_styling = DocumentAnalysis.filter_by_boundaries(lines_with_styling=lines_with_styling, ocr=ocr)
             lines_without_numbers = Cleaner.clean_page_numbers(lines=lines_with_styling)
             cleaned_text = Cleaner.join_broken_sentences(lines=lines_without_numbers)
             page_text, multipage_parentheses = Cleaner.clean_extracted_text(text=cleaned_text,

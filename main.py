@@ -164,29 +164,17 @@ class DocumentAnalysis:
             raise
 
     @staticmethod
-    def get_pdf_styling_from_blocks(page_blocks: list) -> list:
+    def iter_pdf_styling_from_blocks(page_blocks: list):
 
         try:
-            lines_with_styling: list[StyledLine] = []
-
             for block in page_blocks:
                 if block["type"] != 0:
                     continue # text blocks only
 
                 for line in block["lines"]:
-                    spans = line["spans"]
+                    for span in line["spans"]:
+                        yield StyledLine("".join(span["text"]).strip(), span["size"], span["font"], span["origin"][0], span["origin"][1])
 
-                    for span in spans:
-
-                        line_text = "".join(span["text"]).strip()
-                        font_size = span["size"]
-                        font_name = span["font"]
-                        origin_x = span["origin"][0]
-                        origin_y = span["origin"][1]
-
-                        lines_with_styling.append(StyledLine(text=line_text, font_size=font_size, font_name=font_name, origin_x=origin_x, origin_y=origin_y))
-
-            return lines_with_styling
 
         except Exception as e:
             logging.exception(f"Error reading styles from PDF blocks: {e}")
@@ -572,7 +560,7 @@ def main():
         for page_blocks in pdf_reader.iter_pages(sort=False):
 
 
-            lines_with_styling = DocumentAnalysis.get_pdf_styling_from_blocks(page_blocks=page_blocks)
+            lines_with_styling = list(DocumentAnalysis.iter_pdf_styling_from_blocks(page_blocks=page_blocks))
             lines_without_blanks = [line for line in lines_with_styling if line.text.strip()]
 
             ocr = False

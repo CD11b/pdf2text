@@ -230,14 +230,7 @@ class DocumentAnalysis:
     @staticmethod
     def get_gap_differences(data):
 
-        differences = []
-        for i, value in enumerate(data):
-
-            if i < len(data) - 1:
-                difference = value - data[i + 1]
-                if difference < 0:
-                    difference = difference * -1
-                differences.append(difference)
+        differences = [abs(data[i] - data[i+1]) for i in range(len(data)-1)]
 
         return differences
 

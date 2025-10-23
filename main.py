@@ -507,6 +507,10 @@ class PDFReader:
 
         return False
 
+    def iter_pages(self, sort=False):
+        for i in range(self.get_page_count()):
+            yield DocumentAnalysis.get_page_blocks_from_dict(pdf=self.pdf, page_number=i, sort=sort)
+
     def get_page_count(self) -> int:
         return self.pdf.page_count
 
@@ -565,9 +569,9 @@ def main():
         output_writer.write(mode="w")
 
         multipage_parentheses = None
-        for page in range(pdf_reader.get_page_count()):
+        for page_blocks in pdf_reader.iter_pages(sort=False):
 
-            page_blocks = DocumentAnalysis.get_page_blocks_from_dict(pdf=pdf_reader.pdf, page_number=page, sort=False)
+
             lines_with_styling = DocumentAnalysis.get_pdf_styling_from_blocks(page_blocks=page_blocks)
             lines_without_blanks = [line for line in lines_with_styling if line.text.strip()]
 

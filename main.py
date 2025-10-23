@@ -338,7 +338,13 @@ class DocumentAnalysis:
     def setup(self, lines_with_styling, ocr):
 
         page_heuristics = TextHeuristics()
+
         self.page_heuristics = page_heuristics.analyze(lines=lines_with_styling, ocr=ocr)
+
+        if ocr == True and self.page_heuristics['font name']['most common'] != 'GlyphLessFont':
+            ocr = False
+            self.page_heuristics = page_heuristics.analyze(lines=lines_with_styling, ocr=ocr)
+
         self.set_page_boundaries()
 
     def filter_by_boundaries(self, lines_with_styling, ocr):

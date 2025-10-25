@@ -239,7 +239,8 @@ class TextHeuristics:
 
 
         return {'start x': {'most common': most_common['start_x'], 'minimum': min(counters['start_x']), 'maximum': max(counters['start_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
-                'start y': {'most common': most_common['start_y'], 'minimum': min(counters['start_x']), 'maximum': max(counters['start_y']), 'lower bound': line_gaps[0], 'upper bound': line_gaps[1]},
+                'start y': {'most common': most_common['start_y'], 'minimum': min(counters['start_y']), 'maximum': max(counters['start_y']), 'lower bound': line_gaps[0], 'upper bound': line_gaps[1]},
+                'end x': {'most common': most_common['end_x'], 'minimum': min(counters['end_x']), 'maximum': max(counters['end_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
                 'font size': {'most common': most_common['font_size'], 'lower bound': font_bounds[0], 'upper bound': font_bounds[1]},
                 'font name': {'most common': most_common['font_name']}}
 

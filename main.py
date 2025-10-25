@@ -165,7 +165,7 @@ class TextHeuristics:
                 counter[attr_value] += len(line.text)
             return counter
 
-        except AttributeError as e:
+        except AttributeError:
             logging.exception(f"Invalid styling attribute: {attribute}")
             raise
         except Exception as e:

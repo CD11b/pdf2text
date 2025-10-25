@@ -588,9 +588,7 @@ def main():
                 page_text, multipage_parentheses = Cleaner.clean_extracted_text(text=cleaned_text,
                                                                                      multipage_parentheses=multipage_parentheses, ocr=ocr)
 
-            output_writer.write(mode="a", text=f'{page_text}\n\n')
-
-    pdf_reader.close()
+                output_writer.write(mode="a", text=f'{page_text}\n\n')
 
 if __name__ == '__main__':
     main()

@@ -450,11 +450,7 @@ class DocumentAnalysis:
 
             elif lines[i].start_y < filtered_lines[-1].start_y:  # Titles outside regular read-order
 
-                if self.is_dominant_font(line=current_word):  # Edge case: Indented main body
-                    current_line, i = collect_line(i, line_y_boundary)
-
-                else:
-                    i = skip_line(i, line_y_boundary)
+                i = skip_line(i, line_y_boundary)
 
             elif self.is_after_left_margin(current_word):  # Indented block
 

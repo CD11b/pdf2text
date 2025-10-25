@@ -212,24 +212,27 @@ class ProcessedText:
 
         self.set_page_boundaries()
 
-    def filter_by_boundaries(self, lines, ocr):
+    @staticmethod
+    def skip_line(i: int, y_boundary: float, lines) -> int:
+        while i < len(lines) and lines[i].start_y == y_boundary:
+            i += 1
+        return i
 
-        def skip_line(i: int, y_boundary: float) -> int:
-            while i < len(lines) and lines[i].start_y == y_boundary:
-                i += 1
-            return i
-
-        def collect_line(i: int, y_boundary: float) -> tuple[list[StyledLine], int]:
-            current_line = []
-            while i <= len(lines) - 1 and lines[i].start_y == y_boundary:
-                current_line.append(lines[i])
-                i += 1
-            return current_line, i
-
-        def collect_once(i: int) -> int:
+    @staticmethod
+    def collect_line(i: int, y_boundary: float, lines) -> tuple[list[StyledLine], int]:
+        current_line = []
+        while i <= len(lines) - 1 and lines[i].start_y == y_boundary:
             current_line.append(lines[i])
-            return i + 1
+            i += 1
+        return current_line, i
 
+    @staticmethod
+    def collect_once(i: int, lines) -> tuple[list[StyledLine], int]:
+        current_line = [lines[i]]
+        return current_line, i + 1
+       
+    
+    def filter_by_boundaries(self, lines, ocr):
 
         filtered_lines: list[StyledLine] = []
         current_line: list[StyledLine] = []
@@ -245,81 +248,109 @@ class ProcessedText:
             if self.is_header_region():
 
                 if self.is_before_left_margin(line=current_word):  # Header
-                    i = skip_line(i, line_y_boundary)
+                    i = ProcessedText.skip_line(i, line_y_boundary, lines)
 
                 if self.is_at_left_margin(line=current_word):  # Body start
 
                     if self.is_body_paragraph(lines=lines[i:]):
                         self.top_boundary = current_word.start_y
-                        current_line, i = collect_line(i, line_y_boundary)
+                        current_line, i = ProcessedText.collect_line(i, line_y_boundary, lines)
 
                     else: # Aligned header
-                        i = skip_line(i, line_y_boundary)
+                        i = ProcessedText.skip_line(i, line_y_boundary, lines)
 
                 elif self.is_after_left_margin(line=current_word):  # Edge case: Indented main body
 
                     if self.is_indented_paragraph(line=current_word):
                         self.top_boundary = current_word.start_y
-                        current_line, i = collect_line(i, line_y_boundary)
+                        current_line, i = ProcessedText.collect_line(i, line_y_boundary, lines)
                     else:
-                        i = skip_line(i, line_y_boundary)
+                        i = ProcessedText.skip_line(i, line_y_boundary, lines)
 
                 else:
-                    i = skip_line(i, line_y_boundary)
+                    i = ProcessedText.skip_line(i, line_y_boundary, lines)
 
             elif self.is_footer_region(line=current_word):  # Very bottom
 
                 if current_word.start_x == self.page_heuristics['start x']["most common"]:
-                    current_line, i = collect_line(i, line_y_boundary)
-
-                elif lines[i].start_x == filtered_lines[-1].start_x:  # Continued indented block
-
-                    while lines[i].start_y <= line_y_boundary:
-
-                        if i == len(lines) - 1:
-                            i = collect_once(i)
-                            break
-                        else:
-
-                            if self.is_indented_paragraph(line=current_word):
-                                current_line, i = collect_line(i, line_y_boundary)
-                            elif ocr and self.is_dominant_word_gap(current_word=lines[i], next_word=lines[i + 1]): # Doesn't work for non-ocr
-                                i = collect_once(i)
-                            else:  # Replace with table detection
-                                i = collect_once(i)
-                                break
+                    current_line, i = ProcessedText.collect_line(i, line_y_boundary, lines)
 
                 else:
-                    i = skip_line(i, line_y_boundary) # Footer
+                    while lines[i].start_y <= line_y_boundary:
+
+                        if self.is_continued_indented_paragraph(current_line=current_word, last_line=filtered_lines[-1]):
+
+                            if i == len(lines) - 1:
+                                print(f"skipped i={i}, line={lines[i]}")
+                                current_line, i = ProcessedText.collect_once(i, lines)
+                            else:
+                                current_line, i = ProcessedText.collect_line(i, line_y_boundary, lines)
+
+                        elif self.is_indented_paragraph(line=current_word):
+                            current_line, i = ProcessedText.collect_line(i, line_y_boundary, lines)
+
+                        elif ocr and self.is_dominant_word_gap(current_word=lines[i], next_word=lines[i + 1]):
+                            current_line, i = ProcessedText.collect_line(i, line_y_boundary, lines)
+
+                        elif self.is_dominant_font(line=current_word):
+                            current_line, i = ProcessedText.collect_once(i, lines)
+
+                        else:
+                            print(f"skipped i={i}, line={lines[i]}")
+                            i = ProcessedText.skip_line(i, line_y_boundary, lines)
+                            # current_line, i = ProcessedText.collect_once(i, lines)
+                        break
+
+
+                # else:
+                #     i = ProcessedText.skip_line(i, line_y_boundary, lines) # Footer
 
             elif self.is_at_left_margin(line=current_word):  # Main body
 
                 if self.is_dominant_font(line=current_word):
-                    current_line, i = collect_line(i, line_y_boundary)
+                    current_line, i = ProcessedText.collect_line(i, line_y_boundary, lines)
 
                 else:  # Edge case: Aligned title
-                    i = skip_line(i, line_y_boundary)
+                    i = ProcessedText.skip_line(i, line_y_boundary, lines)
 
             elif lines[i].start_y < filtered_lines[-1].start_y:  # Titles outside regular read-order
 
-                i = skip_line(i, line_y_boundary)
+                i = ProcessedText.skip_line(i, line_y_boundary, lines)
 
             elif self.is_after_left_margin(current_word):  # Indented block
 
                 if i == len(lines) - 1 and lines[i].start_y == line_y_boundary:
-                    i = collect_once(i)
+                    current_line, i = ProcessedText.collect_once(i, lines)
+                    print(f"skipped i={i}, line={lines[i]}")
 
                 elif i < len(lines) - 1:
-                    while lines[i].start_y == line_y_boundary:
 
-                        if self.is_indented_paragraph(line=current_word):
-                            current_line, i = collect_line(i, line_y_boundary)
+                    while lines[i].start_y <= line_y_boundary:
+
+                        if self.is_continued_indented_paragraph(current_line=current_word,
+                                                                last_line=filtered_lines[-1]):
+
+                            if i == len(lines) - 1:
+                                print(f"skipped i={i}, line={lines[i]}")
+                                current_line, i = ProcessedText.collect_once(i, lines)
+                            else:
+                                current_line, i = ProcessedText.collect_line(i, line_y_boundary, lines)
+
+                        elif self.is_indented_paragraph(line=current_word):
+                            current_line, i = ProcessedText.collect_line(i, line_y_boundary, lines)
 
                         elif ocr and self.is_dominant_word_gap(current_word=lines[i], next_word=lines[i + 1]):
-                            current_line, i = collect_line(i, line_y_boundary)
+                            current_line, i = ProcessedText.collect_line(i, line_y_boundary, lines)
+
+                        elif self.is_dominant_font(line=current_word):
+                            current_line, i = ProcessedText.collect_once(i, lines)
+
                         else:
-                            i = collect_once(i)
-                            break
+                            print(f"skipped i={i}, line={lines[i]}")
+                            i = ProcessedText.skip_line(i, line_y_boundary, lines)
+                            # current_line, i = ProcessedText.collect_once(i, lines)
+                        break
+
 
             elif self.is_before_left_margin(line=current_word):  # Left-side footer
                 i = skip_line(i, line_y_boundary)

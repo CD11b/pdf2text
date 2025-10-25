@@ -109,14 +109,14 @@ class ProcessedText:
             if k != hanging_open:
                 yield k, v
 
-    def has_parentheses(self, lines: list, hanging_open):
+    def clean_parentheses(self, lines: list[StyledLine], hanging_open: str | None) -> tuple[list[StyledLine], str | None]:
 
         i = 0
         while i < len(lines):
 
             for key, value in self.prioritized_pairs(hanging_open):
 
-                if key in lines[i].text:
+                if hanging_open or key in lines[i].text:
                     opens_in = i
                     closes_in = None
                     j = i
@@ -152,7 +152,12 @@ class ProcessedText:
                             lines.pop(k)
                     else:
                         hanging_open = key
-
+                        before_open, _, _ = lines[opens_in].text.partition(key)
+                        lines[opens_in].text = before_open.rstrip()
+                        for k in range(j - 1, opens_in, -1):
+                            lines.pop(k)
+                        break
+            i += 1
         return lines, hanging_open
 
     def is_at_left_margin(self, line: StyledLine) -> bool:
@@ -572,7 +577,7 @@ def main():
 
             output_writer.write(mode="w")
 
-            multipage_parentheses = None
+            hanging_open = None
             for page_blocks in pdf_reader.iter_pages(sort=False):
 
                 lines_with_styling = list(DocumentAnalysis.iter_pdf_styling_from_blocks(page_blocks=page_blocks))
@@ -584,9 +589,8 @@ def main():
 
                 lines_with_styling = processed_text.filter_by_boundaries(lines=lines_with_styling, ocr=ocr)
                 lines_without_numbers = ProcessedText.clean_page_numbers(lines=lines_with_styling)
-                cleaned_text = ProcessedText.join_broken_sentences(lines=lines_without_numbers)
-                page_text, multipage_parentheses = ProcessedText.clean_extracted_text(text=cleaned_text,
-                                                                                     multipage_parentheses=multipage_parentheses, ocr=ocr)
+                cleaned_text, hanging_open = processed_text.clean_parentheses(lines=lines_without_numbers, hanging_open=hanging_open)
+                page_text = ProcessedText.join_broken_sentences(lines=cleaned_text)
 
                 output_writer.write(mode="a", text=f'{page_text}\n\n')
 

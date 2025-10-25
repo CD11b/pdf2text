@@ -92,6 +92,69 @@ class ProcessedText:
             logging.exception(f"Error joining broken sentences: {e}")
             raise
 
+    def normalize_unicode(self, text):
+        compatability_mapped = unicodedata.normalize('NFKC', text)
+        decomposed = unicodedata.normalize('NFD', compatability_mapped)
+
+        # Step 2: Remove combining marks
+        return ''.join(c for c in decomposed if not unicodedata.combining(c))
+
+    def prioritized_pairs(self, hanging_open=None):
+
+        pairs = {'(': ')', '[': ']', '{': '}'}
+
+        if hanging_open:
+            yield hanging_open, pairs[hanging_open]
+        for k, v in pairs.items():
+            if k != hanging_open:
+                yield k, v
+
+    def has_parentheses(self, lines: list, hanging_open):
+
+        i = 0
+        while i < len(lines):
+
+            for key, value in self.prioritized_pairs(hanging_open):
+
+                if key in lines[i].text:
+                    opens_in = i
+                    closes_in = None
+                    j = i
+
+                    while j < len(lines):
+                        if value in lines[j].text:
+                            closes_in = j
+                            break
+                        j += 1
+
+                    if closes_in is not None:
+                        diff = closes_in - opens_in
+                        before_open, _, _ = lines[opens_in].text.partition(key)
+                        _, _, after_close = lines[closes_in].text.partition(value)
+
+                        if diff == 0:
+                            if hanging_open:
+                                lines[opens_in].text = after_close.lstrip()
+                                hanging_open = None
+                            else:
+                                lines[opens_in].text = before_open.rstrip() + after_close
+                        elif diff > 0:
+
+                            if hanging_open:
+                                lines[closes_in].text = after_close.lstrip()
+                                hanging_open = None
+                                opens_in -= 1
+                            else:
+                                lines[opens_in].text = before_open.rstrip()
+                                lines[closes_in].text = after_close.lstrip()
+
+                        for k in range(closes_in - 1, opens_in, -1):
+                            lines.pop(k)
+                    else:
+                        hanging_open = key
+
+        return lines, hanging_open
+
     @staticmethod
     def clean_extracted_text(text: str, ocr: bool, multipage_parentheses: str | None = None) -> tuple[str, str]:
         """Clean text in a single pass for better performance."""
@@ -102,44 +165,6 @@ class ProcessedText:
 
             while i < len(text):
                 char = text[i]
-
-                # Skip parentheses and their content
-                pairs = {'(': ')', '[': ']', '{': '}'}
-
-                if char in pairs or multipage_parentheses is not None:
-
-                    if multipage_parentheses:
-                        open_char = multipage_parentheses
-                    else:
-                        open_char = char
-
-                    close_char = pairs[open_char]
-                    depth = 1
-                    i += 1
-                    iterations = 0
-                    while i < len(text) and depth >= 1:
-
-                        if iterations >= 30 and ocr is True: # Misrecognized parentheses
-                            i -= 30
-                            result.append(open_char)
-                            break
-
-                        if text[i] == open_char:
-                            depth += 1
-                        elif text[i] == close_char:
-                            depth -= 1
-                            multipage_parentheses = None
-                        elif i == len(text) - 1:
-                            multipage_parentheses = open_char
-
-                        i += 1
-                        iterations += 1
-
-                    if result and result[-1] == ' ': # Remove extra space
-                        result.pop()
-
-                    continue
-
                 # Skip emojis and symbols
                 if (unicodedata.category(char)[0] in ['S'] or
                         (0x1F300 <= ord(char) <= 0x1FAFF)):

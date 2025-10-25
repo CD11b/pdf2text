@@ -420,7 +420,8 @@ class DocumentAnalysis:
 
             elif self.is_footer_region(line=current_word):  # Very bottom
 
-                if lines_with_styling[i].start_x == filtered_lines[-1].start_x:  # Continued indented block
+                if current_word.start_x == self.page_heuristics['start x']["most common"]:
+                    current_line, i = collect_line(i, line_y_boundary)
 
                 elif lines[i].start_x == filtered_lines[-1].start_x:  # Continued indented block
 

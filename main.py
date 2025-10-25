@@ -234,7 +234,10 @@ class TextHeuristics:
         font_sizes = [size for size, freq in counters['font_size'].items() for _ in range(freq)]
         font_bounds = self.compute_bounds(font_sizes)
 
-        word_gaps = self.compute_word_gaps(lines=lines)
+        if ocr:
+            word_gaps = self.compute_word_gaps(lines=lines)
+        else:
+            word_gaps = [None, None]
         line_gaps = self.compute_line_gaps(counters['start_y'])
 
 

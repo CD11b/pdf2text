@@ -177,7 +177,20 @@ class ProcessedText:
 
     def is_dominant_word_gap(self, current_word: StyledLine, next_word: StyledLine) -> bool:
         word_separation = next_word.start_x - current_word.end_x
-        return self.page_heuristics['start x']['lower bound'] <= word_separation <= self.page_heuristics['start x']['upper bound']
+        return self.page_heuristics['word gaps']['lower bound'] <= word_separation <= self.page_heuristics['word gaps']['upper bound']
+    
+    def is_indented_paragraph(self, line: StyledLine):
+        return self.page_heuristics['start x']['lower bound'] <= line.start_x <= self.page_heuristics['start x']['upper bound']
+
+    def is_body_paragraph(self, lines: list[StyledLine]):
+
+        gap_to_next_line = 0
+        j = i = 0
+        while gap_to_next_line == 0: # For OCR or varying font compatibility
+            gap_to_next_line = lines[j + 1].start_y - lines[i].start_y
+            j += 1
+
+        return gap_to_next_line <= self.page_heuristics['start y']['upper bound']  # Aligned header
 
     def is_dominant_font(self, line: StyledLine) -> bool:
         return self.page_heuristics['font size']['lower bound'] <= line.font_size <= self.page_heuristics['font size']['upper bound']
@@ -236,29 +249,18 @@ class ProcessedText:
 
                 if self.is_at_left_margin(line=current_word):  # Body start
 
-                    gap_to_next_line = 0
-                    j = i
-                    while gap_to_next_line == 0:
-                        gap_to_next_line = lines[j + 1].start_y - lines[i].start_y
-                        j += 1
-
-                    if gap_to_next_line > self.page_heuristics['start y']['upper bound']:  # Aligned header
-                        i = skip_line(i, line_y_boundary)
-
-                    else:
+                    if self.is_body_paragraph(lines=lines[i:]):
                         self.top_boundary = current_word.start_y
                         current_line, i = collect_line(i, line_y_boundary)
+
+                    else: # Aligned header
+                        i = skip_line(i, line_y_boundary)
 
                 elif self.is_after_left_margin(line=current_word):  # Edge case: Indented main body
 
-                    if ocr and current_word.start_x - self.page_heuristics['start x']['lower bound'] > self.left_boundary:  # Indented header
-                        i = skip_line(i, line_y_boundary)
-
-                    elif self.is_dominant_font(line=current_word):
-
+                    if self.is_indented_paragraph(line=current_word):
                         self.top_boundary = current_word.start_y
                         current_line, i = collect_line(i, line_y_boundary)
-
                     else:
                         i = skip_line(i, line_y_boundary)
 
@@ -279,7 +281,9 @@ class ProcessedText:
                             break
                         else:
 
-                            if ocr and self.is_dominant_word_gap(current_word=lines[i], next_word=lines[i + 1]): # Doesn't work for non-ocr
+                            if self.is_indented_paragraph(line=current_word):
+                                current_line, i = collect_line(i, line_y_boundary)
+                            elif ocr and self.is_dominant_word_gap(current_word=lines[i], next_word=lines[i + 1]): # Doesn't work for non-ocr
                                 i = collect_once(i)
                             else:  # Replace with table detection
                                 i = collect_once(i)
@@ -308,7 +312,10 @@ class ProcessedText:
                 elif i < len(lines) - 1:
                     while lines[i].start_y == line_y_boundary:
 
-                        if ocr and self.is_dominant_word_gap(current_word=lines[i], next_word=lines[i + 1]):
+                        if self.is_indented_paragraph(line=current_word):
+                            current_line, i = collect_line(i, line_y_boundary)
+
+                        elif ocr and self.is_dominant_word_gap(current_word=lines[i], next_word=lines[i + 1]):
                             current_line, i = collect_line(i, line_y_boundary)
                         else:
                             i = collect_once(i)
@@ -322,7 +329,6 @@ class ProcessedText:
 
 
             if len(current_line) > 0:
-                # for word in current_line:
 
                 filtered_lines.append(StyledLine(text=' '.join(line.text for line in current_line if line.text.strip()),
                                                  font_size=pd.Series([line.font_size for line in current_line]).mean(),
@@ -420,16 +426,25 @@ class TextHeuristics:
         font_sizes = [size for size, freq in counters['font_size'].items() for _ in range(freq)]
         font_bounds = self.compute_bounds(font_sizes)
 
+        line_gaps = self.compute_line_gaps(counters['start_y'])
+
+        indent_gaps = [indent for indent, freq in counters['start_x'].items() for _ in range(freq)]
+        indent_bounds = self.compute_bounds(indent_gaps)
+
+        edge_gaps = [edge for edge, freq in counters['end_x'].items() for _ in range(freq)]
+        edge_bounds = self.compute_bounds(edge_gaps)
+
         if ocr:
             word_gaps = self.compute_word_gaps(lines=lines)
         else:
             word_gaps = [None, None]
-        line_gaps = self.compute_line_gaps(counters['start_y'])
 
 
-        return {'start x': {'most common': most_common['start_x'], 'minimum': min(counters['start_x']), 'maximum': max(counters['start_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
+
+        return {'start x': {'most common': most_common['start_x'], 'minimum': min(counters['start_x']), 'maximum': max(counters['start_x']), 'lower bound': indent_bounds[0], 'upper bound': indent_bounds[1]},
                 'start y': {'most common': most_common['start_y'], 'minimum': min(counters['start_y']), 'maximum': max(counters['start_y']), 'lower bound': line_gaps[0], 'upper bound': line_gaps[1]},
-                'end x': {'most common': most_common['end_x'], 'minimum': min(counters['end_x']), 'maximum': max(counters['end_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
+                'end x': {'most common': most_common['end_x'], 'minimum': min(counters['end_x']), 'maximum': max(counters['end_x']), 'lower bound': edge_bounds[0], 'upper bound': edge_bounds[1]},
+                'word gaps': {'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
                 'font size': {'most common': most_common['font_size'], 'lower bound': font_bounds[0], 'upper bound': font_bounds[1]},
                 'font name': {'most common': most_common['font_name']}}
 

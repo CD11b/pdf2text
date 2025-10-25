@@ -573,17 +573,18 @@ def main():
         multipage_parentheses = None
         for page_blocks in pdf_reader.iter_pages(sort=False):
 
+                lines_with_styling = list(DocumentAnalysis.iter_pdf_styling_from_blocks(page_blocks=page_blocks))
+                document_analyzer = DocumentAnalysis()
 
-            lines_with_styling = list(DocumentAnalysis.iter_pdf_styling_from_blocks(page_blocks=page_blocks))
-            ocr = False
-            if DocumentAnalysis.check_ocr(lines_with_styling=lines_with_styling):
-                ocr = True
+                ocr = False
+                if document_analyzer.check_ocr(lines=lines_with_styling):
+                    ocr = True
 
-            lines_with_styling = DocumentAnalysis.filter_by_boundaries(lines_with_styling=lines_with_styling, ocr=ocr)
-            lines_without_numbers = Cleaner.clean_page_numbers(lines=lines_with_styling)
-            cleaned_text = Cleaner.join_broken_sentences(lines=lines_without_numbers)
-            page_text, multipage_parentheses = Cleaner.clean_extracted_text(text=cleaned_text,
-                                                                                 multipage_parentheses=multipage_parentheses, ocr=ocr)
+                lines_with_styling = document_analyzer.filter_by_boundaries(lines=lines_with_styling, ocr=ocr)
+                lines_without_numbers = Cleaner.clean_page_numbers(lines=lines_with_styling)
+                cleaned_text = Cleaner.join_broken_sentences(lines=lines_without_numbers)
+                page_text, multipage_parentheses = Cleaner.clean_extracted_text(text=cleaned_text,
+                                                                                     multipage_parentheses=multipage_parentheses, ocr=ocr)
 
             output_writer.write(mode="a", text=f'{page_text}\n\n')
 

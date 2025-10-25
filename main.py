@@ -403,8 +403,7 @@ class DocumentAnalysis:
 
                 elif self.is_after_left_margin(line=current_word):  # Edge case: Indented main body
 
-                    if current_word.start_x - self.page_heuristics['start x'][
-                        'lower bound'] > self.left_boundary:  # Indented header
+                    if ocr and current_word.start_x - self.page_heuristics['start x']['lower bound'] > self.left_boundary:  # Indented header
                         i = skip_line(i, line_y_boundary)
 
                     elif self.is_dominant_font(line=current_word):

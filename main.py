@@ -327,8 +327,8 @@ class DocumentAnalysis:
     def is_header_region(self) -> bool:
         return self.top_boundary is None
 
-    def is_dominant_word_gap(self, current_word, next_word):
-        word_separation = next_word.start_x - current_word.start_x
+    def is_dominant_word_gap(self, current_word: StyledLine, next_word: StyledLine) -> bool:
+        word_separation = next_word.start_x - current_word.end_x
         return self.page_heuristics['start x']['lower bound'] <= word_separation <= self.page_heuristics['start x']['upper bound']
 
     def is_dominant_font(self, line: StyledLine) -> bool:

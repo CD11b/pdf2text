@@ -345,7 +345,7 @@ class DocumentAnalysis:
 
         self.page_heuristics = page_heuristics.analyze(lines=lines, ocr=ocr)
 
-        if ocr == True and self.page_heuristics['font name']['most common'] != 'GlyphLessFont':
+        if ocr and self.page_heuristics['font name']['most common'] != 'GlyphLessFont':
             ocr = False
             self.page_heuristics = page_heuristics.analyze(lines=lines, ocr=ocr)
 

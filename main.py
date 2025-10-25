@@ -353,7 +353,7 @@ class ProcessedText:
 
 
             elif self.is_before_left_margin(line=current_word):  # Left-side footer
-                i = skip_line(i, line_y_boundary)
+                i = ProcessedText.skip_line(i, line_y_boundary, lines)
 
             else:
                 i += 1

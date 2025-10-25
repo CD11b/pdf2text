@@ -224,7 +224,7 @@ class TextHeuristics:
 
         counters = {
             attr: self.get_styling_counter(lines, attr)
-            for attr in ['font_size', 'font_name', 'start_x', 'start_y']
+            for attr in ['font_size', 'font_name', 'start_x', 'start_y', 'end_x']
         }
 
         most_common = {k: self.most_common_value(v) for k, v in counters.items()}

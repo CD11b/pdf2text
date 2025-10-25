@@ -177,7 +177,7 @@ class TextHeuristics:
 
         return counter.most_common(1)[0][0] if counter else None
 
-    def compute_bounds(self, data):
+    def compute_bounds(self, data) -> tuple[float, float]:
         series = pd.Series(data)
         mean = series.mean()
         std = series.std()
@@ -268,7 +268,7 @@ class DocumentAnalysis:
             raise
 
     @staticmethod
-    def iter_pdf_styling_from_blocks(page_blocks: list):
+    def iter_pdf_styling_from_blocks(page_blocks: list) -> Generator[StyledLine]:
 
         try:
             for block in page_blocks:
@@ -289,15 +289,16 @@ class DocumentAnalysis:
     # @staticmethod
     # def separate_by_paragraph(lines_with_styling: list):
 
-    def check_ocr(self, lines_with_styling: list) -> bool:
+    @staticmethod
+    def check_ocr(lines: list[StyledLine]) -> bool:
 
-        if len(lines_with_styling) == 0:
+        if len(lines) == 0:
             return False
 
         words = 1
         phrases = 1
 
-        for i, line in enumerate(lines_with_styling):
+        for i, line in enumerate(lines):
 
             if line.text.strip() is None:
                 continue
@@ -311,29 +312,29 @@ class DocumentAnalysis:
         else:
             return False
 
-    def is_at_left_margin(self, line):
+    def is_at_left_margin(self, line: StyledLine) -> bool:
         return line.start_x == self.left_boundary
 
-    def is_after_left_margin(self, line):
+    def is_after_left_margin(self, line: StyledLine) -> bool:
         return line.start_x > self.left_boundary
 
-    def is_before_left_margin(self, line):
+    def is_before_left_margin(self, line: StyledLine) -> bool:
         return line.start_x < self.left_boundary
 
-    def is_footer_region(self, line):
+    def is_footer_region(self, line: StyledLine) -> bool:
         return line.start_y >= self.bottom_boundary - self.page_heuristics['start y']['lower bound']
 
-    def is_header_region(self):
+    def is_header_region(self) -> bool:
         return self.top_boundary is None
 
     def is_dominant_word_gap(self, current_word, next_word):
         word_separation = next_word.start_x - current_word.start_x
         return self.page_heuristics['start x']['lower bound'] <= word_separation <= self.page_heuristics['start x']['upper bound']
 
-    def is_dominant_font(self, line):
+    def is_dominant_font(self, line: StyledLine) -> bool:
         return self.page_heuristics['font size']['lower bound'] <= line.font_size <= self.page_heuristics['font size']['upper bound']
 
-    def set_page_boundaries(self):
+    def set_page_boundaries(self) -> None:
 
         self.left_boundary = self.page_heuristics['start x']['most common']
         self.bottom_boundary = self.page_heuristics['start y']['maximum']
@@ -357,7 +358,7 @@ class DocumentAnalysis:
                 i += 1
             return i
 
-        def collect_line(i, y_boundary):
+        def collect_line(i: int, y_boundary: float) -> tuple[list[StyledLine], int]:
             current_line = []
             while i <= len(lines) - 1 and lines[i].start_y == y_boundary:
                 current_line.append(lines[i])
@@ -370,14 +371,14 @@ class DocumentAnalysis:
 
 
         filtered_lines: list[StyledLine] = []
-        current_line = []
+        current_line: list[StyledLine] = []
 
-        self.setup(lines_with_styling, ocr)
+        self.setup(lines, ocr)
 
         i = 0
-        while i < len(lines_with_styling):
+        while i < len(lines):
 
-            current_word = lines_with_styling[i]
+            current_word: StyledLine = lines[i]
             line_y_boundary = current_word.start_y
 
             if self.is_header_region():

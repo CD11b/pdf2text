@@ -563,15 +563,16 @@ def main():
     else:
         pdf_path = "./docs/test_OCR.pdf"
 
-    with PDFReader(pdf_path) as pdf_reader:
+    if os.path.exists(pdf_path) and os.path.isfile(pdf_path):
+        with PDFReader(pdf_path) as pdf_reader:
 
-        output_writer = OutputWriter()
-        output_writer.set_output_path(pdf=pdf_reader.pdf, pdf_path=pdf_path)
+            output_writer = OutputWriter()
+            output_writer.set_output_path(pdf=pdf_reader.pdf, pdf_path=pdf_path)
 
-        output_writer.write(mode="w")
+            output_writer.write(mode="w")
 
-        multipage_parentheses = None
-        for page_blocks in pdf_reader.iter_pages(sort=False):
+            multipage_parentheses = None
+            for page_blocks in pdf_reader.iter_pages(sort=False):
 
                 lines_with_styling = list(DocumentAnalysis.iter_pdf_styling_from_blocks(page_blocks=page_blocks))
                 document_analyzer = DocumentAnalysis()

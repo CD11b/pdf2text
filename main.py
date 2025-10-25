@@ -155,33 +155,6 @@ class ProcessedText:
 
         return lines, hanging_open
 
-    @staticmethod
-    def clean_extracted_text(text: str, ocr: bool, multipage_parentheses: str | None = None) -> tuple[str, str]:
-        """Clean text in a single pass for better performance."""
-
-        try:
-            result = []
-            i = 0
-
-            while i < len(text):
-                char = text[i]
-                # Skip emojis and symbols
-                if (unicodedata.category(char)[0] in ['S'] or
-                        (0x1F300 <= ord(char) <= 0x1FAFF)):
-                    i += 1
-                    continue
-
-                # Normalize Unicode and add to result
-                normalized = unicodedata.normalize("NFKD", char)
-                result.append(normalized)
-                i += 1
-
-            return ''.join(result), multipage_parentheses
-
-        except Exception as e:
-            logging.exception(f"Error cleaning sentences: {e}")
-            raise
-
     def is_at_left_margin(self, line: StyledLine) -> bool:
         return line.start_x == self.left_boundary
 

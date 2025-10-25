@@ -193,27 +193,27 @@ class TextHeuristics:
 
         return inlier_series.min(), inlier_series.max()
 
-    @staticmethod
-    def compute_differences(data):
-
-        return [abs(data[i] - data[i+1]) for i in range(len(data)-1)]
-
     def compute_word_gaps(self, lines):
 
-        start_x_differences = []
+        gaps = (
+            next_start - prev_end
+            for _, group in pd.DataFrame(lines).groupby("start_y")
+            for prev_end, next_start in zip(group["end_x"], group["start_x"][1:])
+            if next_start - prev_end > 0
+        )
 
-        for _, group in pd.DataFrame(lines).groupby("start_y"):
-            start_x_differences.extend(TextHeuristics.compute_differences(group["start_x"].tolist()))
+        return self.compute_bounds(data=sorted(gaps))
 
-        return self.compute_bounds(data=sorted(start_x_differences))
+    def compute_line_gaps(self, start_y_counter: Counter) -> tuple[Any, Any]:
+        values = sorted(start_y_counter)
+        differences = (
+            abs(y2 - y1)
+            for y1, y2 in zip(values, values[1:])
+            for _ in range(start_y_counter[y1])
+        )
+        return self.compute_bounds(differences)
 
-    def compute_line_gaps(self, start_y_counter):
-
-        differences = TextHeuristics.compute_differences(sorted(start_y_counter))
-
-        return self.compute_bounds(data=differences)
-
-    def set_threshold(self, ocr):
+    def set_threshold(self, ocr: bool) -> None:
 
         if ocr:
             self.threshold = 3.0

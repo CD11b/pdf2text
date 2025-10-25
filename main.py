@@ -338,34 +338,34 @@ class DocumentAnalysis:
         self.left_boundary = self.page_heuristics['start x']['most common']
         self.bottom_boundary = self.page_heuristics['start y']['maximum']
 
-    def setup(self, lines_with_styling, ocr):
+    def setup(self, lines: list[StyledLine], ocr: bool) -> None:
 
         page_heuristics = TextHeuristics()
 
-        self.page_heuristics = page_heuristics.analyze(lines=lines_with_styling, ocr=ocr)
+        self.page_heuristics = page_heuristics.analyze(lines=lines, ocr=ocr)
 
         if ocr == True and self.page_heuristics['font name']['most common'] != 'GlyphLessFont':
             ocr = False
-            self.page_heuristics = page_heuristics.analyze(lines=lines_with_styling, ocr=ocr)
+            self.page_heuristics = page_heuristics.analyze(lines=lines, ocr=ocr)
 
         self.set_page_boundaries()
 
-    def filter_by_boundaries(self, lines_with_styling, ocr):
+    def filter_by_boundaries(self, lines, ocr):
 
-        def skip_line(i, y_boundary):
-            while i < len(lines_with_styling) and lines_with_styling[i].start_y == y_boundary:
+        def skip_line(i: int, y_boundary: float) -> int:
+            while i < len(lines) and lines[i].start_y == y_boundary:
                 i += 1
             return i
 
         def collect_line(i, y_boundary):
             current_line = []
-            while i <= len(lines_with_styling) - 1 and lines_with_styling[i].start_y == y_boundary:
-                current_line.append(lines_with_styling[i])
+            while i <= len(lines) - 1 and lines[i].start_y == y_boundary:
+                current_line.append(lines[i])
                 i += 1
             return current_line, i
 
-        def collect_once(i):
-            current_line.append(lines_with_styling[i])
+        def collect_once(i: int) -> int:
+            current_line.append(lines[i])
             return i + 1
 
 
@@ -390,7 +390,7 @@ class DocumentAnalysis:
                     gap_to_next_line = 0
                     j = i
                     while gap_to_next_line == 0:
-                        gap_to_next_line = lines_with_styling[j + 1].start_y - lines_with_styling[i].start_y
+                        gap_to_next_line = lines[j + 1].start_y - lines[i].start_y
                         j += 1
 
                     if gap_to_next_line > self.page_heuristics['start y']['upper bound']:  # Aligned header
@@ -421,14 +421,16 @@ class DocumentAnalysis:
 
                 if lines_with_styling[i].start_x == filtered_lines[-1].start_x:  # Continued indented block
 
-                    while lines_with_styling[i].start_y <= line_y_boundary:
+                elif lines[i].start_x == filtered_lines[-1].start_x:  # Continued indented block
 
-                        if i == len(lines_with_styling) - 1:
+                    while lines[i].start_y <= line_y_boundary:
+
+                        if i == len(lines) - 1:
                             i = collect_once(i)
                             break
                         else:
 
-                            if self.is_dominant_word_gap(current_word=lines_with_styling[i], next_word=lines_with_styling[i + 1]): # Doesn't work for non-ocr
+                            if ocr and self.is_dominant_word_gap(current_word=lines[i], next_word=lines[i + 1]): # Doesn't work for non-ocr
                                 i = collect_once(i)
                             else:  # Replace with table detection
                                 i = collect_once(i)
@@ -445,7 +447,7 @@ class DocumentAnalysis:
                 else:  # Edge case: Aligned title
                     i = skip_line(i, line_y_boundary)
 
-            elif lines_with_styling[i].start_y < filtered_lines[-1].start_y:  # Titles outside regular read-order
+            elif lines[i].start_y < filtered_lines[-1].start_y:  # Titles outside regular read-order
 
                 if self.is_dominant_font(line=current_word):  # Edge case: Indented main body
                     current_line, i = collect_line(i, line_y_boundary)
@@ -455,13 +457,13 @@ class DocumentAnalysis:
 
             elif self.is_after_left_margin(current_word):  # Indented block
 
-                if i == len(lines_with_styling) - 1 and lines_with_styling[i].start_y == line_y_boundary:
+                if i == len(lines) - 1 and lines[i].start_y == line_y_boundary:
                     i = collect_once(i)
 
-                elif i < len(lines_with_styling) - 1:
-                    while lines_with_styling[i].start_y == line_y_boundary:
+                elif i < len(lines) - 1:
+                    while lines[i].start_y == line_y_boundary:
 
-                        if self.is_dominant_word_gap(current_word=lines_with_styling[i], next_word=lines_with_styling[i + 1]):
+                        if ocr and self.is_dominant_word_gap(current_word=lines[i], next_word=lines[i + 1]):
                             current_line, i = collect_line(i, line_y_boundary)
                         else:
                             i = collect_once(i)

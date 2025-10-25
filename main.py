@@ -1,4 +1,5 @@
 import sys
+from typing import Any, Generator
 import pymupdf
 import os
 import re
@@ -10,8 +11,28 @@ import pandas as pd
 
 os.environ["TESSDATA_PREFIX"] = "./training"
 
+@dataclass
+class StyledLine:
+    text: str
+    font_size: float
+    font_name: str
+    start_x: float
+    start_y: float
+    end_x: float
 
-class Cleaner:
+    def __post_init__(self):
+        self.font_size = round(self.font_size)
+        self.start_x = round(self.start_x)
+        self.start_y = round(self.start_y)
+        self.end_x = round(self.end_x)
+
+
+class ProcessedText:
+    def __init__(self):
+        self.page_heuristics = None
+        self.bottom_boundary = None
+        self.top_boundary = None
+        self.left_boundary = None
 
     @staticmethod
     def clean_page_numbers(lines: list) -> list:
@@ -135,185 +156,6 @@ class Cleaner:
         except Exception as e:
             logging.exception(f"Error cleaning sentences: {e}")
             raise
-
-@dataclass
-class StyledLine:
-    text: str
-    font_size: float
-    font_name: str
-    start_x: float
-    start_y: float
-    end_x: float
-
-    def __post_init__(self):
-        self.font_size = round(self.font_size)
-        self.start_x = round(self.start_x)
-        self.start_y = round(self.start_y)
-        self.end_x = round(self.end_x)
-
-class TextHeuristics:
-    def __init__(self) -> None:
-        self.threshold = None
-
-    @staticmethod
-    def get_styling_counter(lines: list, attribute: str) -> Counter:
-
-        try:
-            counter = Counter()
-            for line in lines:
-                attr_value = getattr(line, attribute)
-                counter[attr_value] += len(line.text)
-            return counter
-
-        except AttributeError:
-            logging.exception(f"Invalid styling attribute: {attribute}")
-            raise
-        except Exception as e:
-            logging.exception(f"Error getting style counter for {attribute}: {e}")
-            raise
-
-    @staticmethod
-    def most_common_value(counter: Counter):
-
-        return counter.most_common(1)[0][0] if counter else None
-
-    def compute_bounds(self, data) -> tuple[float, float]:
-        series = pd.Series(data)
-        mean = series.mean()
-        std = series.std()
-
-        if std == 0 or pd.isna(std):
-            return series.min(), series.max()
-
-        z_scores = (series - mean) / std
-        inlier_series = series[z_scores.abs() <= self.threshold]
-
-        if inlier_series.empty:
-            return series.min(), series.max()
-
-        return inlier_series.min(), inlier_series.max()
-
-    def compute_word_gaps(self, lines):
-
-        gaps = (
-            next_start - prev_end
-            for _, group in pd.DataFrame(lines).groupby("start_y")
-            for prev_end, next_start in zip(group["end_x"], group["start_x"][1:])
-            if next_start - prev_end > 0
-        )
-
-        return self.compute_bounds(data=sorted(gaps))
-
-    def compute_line_gaps(self, start_y_counter: Counter) -> tuple[Any, Any]:
-        values = sorted(start_y_counter)
-        differences = (
-            abs(y2 - y1)
-            for y1, y2 in zip(values, values[1:])
-            for _ in range(start_y_counter[y1])
-        )
-        return self.compute_bounds(differences)
-
-    def set_threshold(self, ocr: bool) -> None:
-
-        if ocr:
-            self.threshold = 3.0
-        else:
-            self.threshold = 1.0
-
-    def analyze(self, lines: list, ocr: bool) -> dict:
-
-        counters = {
-            attr: self.get_styling_counter(lines, attr)
-            for attr in ['font_size', 'font_name', 'start_x', 'start_y', 'end_x']
-        }
-
-        most_common = {k: self.most_common_value(v) for k, v in counters.items()}
-
-        self.set_threshold(ocr=ocr)
-
-        font_sizes = [size for size, freq in counters['font_size'].items() for _ in range(freq)]
-        font_bounds = self.compute_bounds(font_sizes)
-
-        if ocr:
-            word_gaps = self.compute_word_gaps(lines=lines)
-        else:
-            word_gaps = [None, None]
-        line_gaps = self.compute_line_gaps(counters['start_y'])
-
-
-        return {'start x': {'most common': most_common['start_x'], 'minimum': min(counters['start_x']), 'maximum': max(counters['start_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
-                'start y': {'most common': most_common['start_y'], 'minimum': min(counters['start_y']), 'maximum': max(counters['start_y']), 'lower bound': line_gaps[0], 'upper bound': line_gaps[1]},
-                'end x': {'most common': most_common['end_x'], 'minimum': min(counters['end_x']), 'maximum': max(counters['end_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
-                'font size': {'most common': most_common['font_size'], 'lower bound': font_bounds[0], 'upper bound': font_bounds[1]},
-                'font name': {'most common': most_common['font_name']}}
-
-
-class DocumentAnalysis:
-
-    def __init__(self):
-        self.page_heuristics = None
-        self.bottom_boundary = None
-        self.top_boundary = None
-        self.left_boundary = None
-
-    @staticmethod
-    def get_page_blocks_from_dict(pdf: pymupdf.Document, page_number: int, sort: bool) -> list:
-
-        try:
-            page_text = pdf[page_number].get_textpage()
-            page_dict = page_text.extractDICT(sort=sort)
-            page_blocks = page_dict["blocks"]
-
-            return page_blocks
-
-        except Exception as e:
-            logging.exception(f"Error reading PDF blocks: {e}")
-            raise
-
-    @staticmethod
-    def iter_pdf_styling_from_blocks(page_blocks: list) -> Generator[StyledLine]:
-
-        try:
-            for block in page_blocks:
-                if block["type"] != 0:
-                    continue # text blocks only
-
-                for line in block["lines"]:
-                    for span in line["spans"]:
-                        text = "".join(span["text"]).strip()
-                        if text:
-                            yield StyledLine(text, span["size"], span["font"], span["origin"][0], span["origin"][1], span["bbox"][2])
-
-
-        except Exception as e:
-            logging.exception(f"Error reading styles from PDF blocks: {e}")
-            raise
-
-    # @staticmethod
-    # def separate_by_paragraph(lines_with_styling: list):
-
-    @staticmethod
-    def check_ocr(lines: list[StyledLine]) -> bool:
-
-        if len(lines) == 0:
-            return False
-
-        words = 1
-        phrases = 1
-
-        for i, line in enumerate(lines):
-
-            if line.text.strip() is None:
-                continue
-            elif " " not in line.text.strip():
-                words += 1
-            else:
-                phrases += 1
-
-        if words / phrases > 0.75:
-            return True
-        else:
-            return False
 
     def is_at_left_margin(self, line: StyledLine) -> bool:
         return line.start_x == self.left_boundary
@@ -490,6 +332,166 @@ class DocumentAnalysis:
         return filtered_lines
 
 
+
+
+class TextHeuristics:
+    def __init__(self) -> None:
+        self.threshold = None
+
+    @staticmethod
+    def get_styling_counter(lines: list, attribute: str) -> Counter:
+
+        try:
+            counter = Counter()
+            for line in lines:
+                attr_value = getattr(line, attribute)
+                counter[attr_value] += len(line.text)
+            return counter
+
+        except AttributeError:
+            logging.exception(f"Invalid styling attribute: {attribute}")
+            raise
+        except Exception as e:
+            logging.exception(f"Error getting style counter for {attribute}: {e}")
+            raise
+
+    @staticmethod
+    def most_common_value(counter: Counter):
+
+        return counter.most_common(1)[0][0] if counter else None
+
+    def compute_bounds(self, data) -> tuple[float, float]:
+        series = pd.Series(data)
+        mean = series.mean()
+        std = series.std()
+
+        if std == 0 or pd.isna(std):
+            return series.min(), series.max()
+
+        z_scores = (series - mean) / std
+        inlier_series = series[z_scores.abs() <= self.threshold]
+
+        if inlier_series.empty:
+            return series.min(), series.max()
+
+        return inlier_series.min(), inlier_series.max()
+
+    def compute_word_gaps(self, lines):
+
+        gaps = (
+            next_start - prev_end
+            for _, group in pd.DataFrame(lines).groupby("start_y")
+            for prev_end, next_start in zip(group["end_x"], group["start_x"][1:])
+            if next_start - prev_end > 0
+        )
+
+        return self.compute_bounds(data=sorted(gaps))
+
+    def compute_line_gaps(self, start_y_counter: Counter) -> tuple[Any, Any]:
+        values = sorted(start_y_counter)
+        differences = (
+            abs(y2 - y1)
+            for y1, y2 in zip(values, values[1:])
+            for _ in range(start_y_counter[y1])
+        )
+        return self.compute_bounds(differences)
+
+    def set_threshold(self, ocr: bool) -> None:
+
+        if ocr:
+            self.threshold = 3.0
+        else:
+            self.threshold = 1.0
+
+    def analyze(self, lines: list, ocr: bool) -> dict:
+
+        counters = {
+            attr: self.get_styling_counter(lines, attr)
+            for attr in ['font_size', 'font_name', 'start_x', 'start_y', 'end_x']
+        }
+
+        most_common = {k: self.most_common_value(v) for k, v in counters.items()}
+
+        self.set_threshold(ocr=ocr)
+
+        font_sizes = [size for size, freq in counters['font_size'].items() for _ in range(freq)]
+        font_bounds = self.compute_bounds(font_sizes)
+
+        if ocr:
+            word_gaps = self.compute_word_gaps(lines=lines)
+        else:
+            word_gaps = [None, None]
+        line_gaps = self.compute_line_gaps(counters['start_y'])
+
+
+        return {'start x': {'most common': most_common['start_x'], 'minimum': min(counters['start_x']), 'maximum': max(counters['start_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
+                'start y': {'most common': most_common['start_y'], 'minimum': min(counters['start_y']), 'maximum': max(counters['start_y']), 'lower bound': line_gaps[0], 'upper bound': line_gaps[1]},
+                'end x': {'most common': most_common['end_x'], 'minimum': min(counters['end_x']), 'maximum': max(counters['end_x']), 'lower bound': word_gaps[0], 'upper bound': word_gaps[1]},
+                'font size': {'most common': most_common['font_size'], 'lower bound': font_bounds[0], 'upper bound': font_bounds[1]},
+                'font name': {'most common': most_common['font_name']}}
+
+
+class DocumentAnalysis:
+
+    @staticmethod
+    def get_page_blocks_from_dict(pdf: pymupdf.Document, page_number: int, sort: bool) -> list:
+
+        try:
+            page_text = pdf[page_number].get_textpage()
+            page_dict = page_text.extractDICT(sort=sort)
+            page_blocks = page_dict["blocks"]
+
+            return page_blocks
+
+        except Exception as e:
+            logging.exception(f"Error reading PDF blocks: {e}")
+            raise
+
+    @staticmethod
+    def iter_pdf_styling_from_blocks(page_blocks: list) -> Generator[StyledLine]:
+
+        try:
+            for block in page_blocks:
+                if block["type"] != 0:
+                    continue # text blocks only
+
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        text = "".join(span["text"]).strip()
+                        if text:
+                            yield StyledLine(text, span["size"], span["font"], span["origin"][0], span["origin"][1], span["bbox"][2])
+
+
+        except Exception as e:
+            logging.exception(f"Error reading styles from PDF blocks: {e}")
+            raise
+
+    # @staticmethod
+    # def separate_by_paragraph(lines_with_styling: list):
+
+    @staticmethod
+    def check_ocr(lines: list[StyledLine]) -> bool:
+
+        if len(lines) == 0:
+            return False
+
+        words = 1
+        phrases = 1
+
+        for i, line in enumerate(lines):
+
+            if line.text.strip() is None:
+                continue
+            elif " " not in line.text.strip():
+                words += 1
+            else:
+                phrases += 1
+
+        if words / phrases > 0.75:
+            return True
+        else:
+            return False
+
 class PDFReader:
     def __init__(self, pdf_path: str):
         self.pdf_path = pdf_path
@@ -576,16 +578,16 @@ def main():
             for page_blocks in pdf_reader.iter_pages(sort=False):
 
                 lines_with_styling = list(DocumentAnalysis.iter_pdf_styling_from_blocks(page_blocks=page_blocks))
-                document_analyzer = DocumentAnalysis()
+                processed_text = ProcessedText()
 
                 ocr = False
-                if document_analyzer.check_ocr(lines=lines_with_styling):
+                if DocumentAnalysis.check_ocr(lines=lines_with_styling):
                     ocr = True
 
-                lines_with_styling = document_analyzer.filter_by_boundaries(lines=lines_with_styling, ocr=ocr)
-                lines_without_numbers = Cleaner.clean_page_numbers(lines=lines_with_styling)
-                cleaned_text = Cleaner.join_broken_sentences(lines=lines_without_numbers)
-                page_text, multipage_parentheses = Cleaner.clean_extracted_text(text=cleaned_text,
+                lines_with_styling = processed_text.filter_by_boundaries(lines=lines_with_styling, ocr=ocr)
+                lines_without_numbers = ProcessedText.clean_page_numbers(lines=lines_with_styling)
+                cleaned_text = ProcessedText.join_broken_sentences(lines=lines_without_numbers)
+                page_text, multipage_parentheses = ProcessedText.clean_extracted_text(text=cleaned_text,
                                                                                      multipage_parentheses=multipage_parentheses, ocr=ocr)
 
                 output_writer.write(mode="a", text=f'{page_text}\n\n')

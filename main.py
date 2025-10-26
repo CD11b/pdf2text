@@ -515,9 +515,6 @@ class DocumentAnalysis:
             logging.exception(f"Error reading styles from PDF blocks: {e}")
             raise
 
-    # @staticmethod
-    # def separate_by_paragraph(lines_with_styling: list):
-
     @staticmethod
     def check_ocr(lines: list[StyledLine]) -> bool:
 

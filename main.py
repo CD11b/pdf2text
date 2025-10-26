@@ -109,54 +109,81 @@ class ProcessedText:
             if k != hanging_open:
                 yield k, v
 
-    def clean_parentheses(self, lines: list[StyledLine], hanging_open: str | None) -> tuple[list[StyledLine], str | None]:
+    def has_parentheses(self, line: StyledLine, key: str) -> int:
+
+        return line.text.count(key)
+
+    def clean_parentheses(self, lines: list[StyledLine], ocr: bool, hanging_open: str | None=None) -> tuple[list[StyledLine], str | None]:
 
         i = 0
         while i < len(lines):
 
-            for key, value in self.prioritized_pairs(hanging_open):
+            line_cleaned = False
+            while True:
 
-                if hanging_open or key in lines[i].text:
-                    opens_in = i
-                    closes_in = None
-                    j = i
+                for key, value in self.prioritized_pairs(hanging_open):
 
-                    while j < len(lines):
-                        if value in lines[j].text:
-                            closes_in = j
+                    if hanging_open or key in lines[i].text:
+                        opens_in = i
+                        closes_in = None
+                        j = i
+
+                        while j < len(lines):
+                            if value in lines[j].text:
+                                closes_in = j
+                                break
+                            j += 1
+
+                        if closes_in is not None:
+                            diff = closes_in - opens_in
+                            before_open, _, _ = lines[opens_in].text.partition(key)
+                            _, _, after_close = lines[closes_in].text.partition(value)
+
+                            if diff == 0:
+                                if hanging_open:
+                                    lines[opens_in].text = after_close.lstrip()
+                                    hanging_open = None
+                                else:
+
+                                    if value in before_open: # Author typo: hanging close
+                                        before_typo, _, after_typo = before_open.partition(value)
+                                        before_open = before_typo + after_typo
+                                        _, _, after_close = after_close.partition(value)
+
+                                    lines[opens_in].text = ''.join([before_open.rstrip(), after_close])
+                            elif diff > 0:
+
+                                if hanging_open:
+                                    lines[closes_in].text = after_close.lstrip()
+                                    hanging_open = None
+                                    opens_in -= 1
+                                else:
+                                    lines[opens_in].text = ''.join([before_open.rstrip(), after_close])
+                                    lines.pop(closes_in)
+
+                            for k in range(closes_in - 1, opens_in, -1):
+                                lines.pop(k)
+
+                            if self.has_parentheses(line=lines[i], key=key):
+                                line_cleaned = True
+                                break
+                            else:
+                                line_cleaned = False
+
+                        else:
+                            if ocr and j - i > 2: # Likely recognized 'C' as open parentheses
+                                break
+
+                            hanging_open = key
+                            before_open, _, _ = lines[opens_in].text.partition(key)
+                            lines[opens_in].text = before_open.rstrip()
+                            for k in range(j - 1, opens_in, -1):
+                                lines.pop(k)
+                            line_cleaned = False
                             break
-                        j += 1
 
-                    if closes_in is not None:
-                        diff = closes_in - opens_in
-                        before_open, _, _ = lines[opens_in].text.partition(key)
-                        _, _, after_close = lines[closes_in].text.partition(value)
-
-                        if diff == 0:
-                            if hanging_open:
-                                lines[opens_in].text = after_close.lstrip()
-                                hanging_open = None
-                            else:
-                                lines[opens_in].text = before_open.rstrip() + after_close
-                        elif diff > 0:
-
-                            if hanging_open:
-                                lines[closes_in].text = after_close.lstrip()
-                                hanging_open = None
-                                opens_in -= 1
-                            else:
-                                lines[opens_in].text = before_open.rstrip()
-                                lines[closes_in].text = after_close.lstrip()
-
-                        for k in range(closes_in - 1, opens_in, -1):
-                            lines.pop(k)
-                    else:
-                        hanging_open = key
-                        before_open, _, _ = lines[opens_in].text.partition(key)
-                        lines[opens_in].text = before_open.rstrip()
-                        for k in range(j - 1, opens_in, -1):
-                            lines.pop(k)
-                        break
+                if not line_cleaned:
+                    break
             i += 1
         return lines, hanging_open
 

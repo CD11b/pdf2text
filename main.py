@@ -400,7 +400,11 @@ class TextHeuristics:
 
         return counter.most_common(1)[0][0] if counter else None
 
-    def compute_bounds(self, data) -> tuple[float, float]:
+    def compute_bounds(self, data, threshold = None) -> tuple[float, float]:
+
+        if threshold is None:
+            threshold = self.threshold
+
         series = pd.Series(data)
         mean = series.mean()
         std = series.std()
@@ -409,7 +413,7 @@ class TextHeuristics:
             return series.min(), series.max()
 
         z_scores = (series - mean) / std
-        inlier_series = series[z_scores.abs() <= self.threshold]
+        inlier_series = series[z_scores.abs() <= threshold]
 
         if inlier_series.empty:
             return series.min(), series.max()
@@ -436,6 +440,16 @@ class TextHeuristics:
         )
         return self.compute_bounds(differences)
 
+    def compute_indent_gaps(self, lines: list) -> tuple[Any, Any]:
+
+        indents = [
+            group["start_x"].min()
+            for _, group in pd.DataFrame(lines).groupby("start_y")
+        ]
+
+        return self.compute_bounds(indents, threshold=2)
+
+
     def set_threshold(self, ocr: bool) -> None:
 
         if ocr:
@@ -459,8 +473,7 @@ class TextHeuristics:
 
         line_gaps = self.compute_line_gaps(counters['start_y'])
 
-        indent_gaps = [indent for indent, freq in counters['start_x'].items() for _ in range(freq)]
-        indent_bounds = self.compute_bounds(indent_gaps)
+        indent_bounds = self.compute_indent_gaps(lines=lines)
 
         edge_gaps = [edge for edge, freq in counters['end_x'].items() for _ in range(freq)]
         edge_bounds = self.compute_bounds(edge_gaps)

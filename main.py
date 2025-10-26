@@ -673,8 +673,9 @@ def main():
 
                 lines_with_styling = processed_text.filter_by_boundaries(lines=lines_with_styling, ocr=ocr)
                 lines_without_numbers = ProcessedText.clean_page_numbers(lines=lines_with_styling)
-                cleaned_text, hanging_open = processed_text.clean_parentheses(lines=lines_without_numbers, hanging_open=hanging_open)
-                page_text = ProcessedText.join_broken_sentences(lines=cleaned_text)
+                cleaned_text, hanging_open = processed_text.clean_parentheses(lines=lines_without_numbers, hanging_open=hanging_open, ocr=ocr)
+                in_paragraphs = processed_text.add_paragraph_breaks(lines=cleaned_text)
+                page_text = ProcessedText.join_broken_sentences(lines=in_paragraphs)
 
                 output_writer.write(mode="a", text=f'{page_text}\n\n')
 

@@ -188,10 +188,10 @@ class ProcessedText:
     def is_body_paragraph(self, lines: list[StyledLine]):
 
         gap_to_next_line = 0
-        j = i = 0
-        while gap_to_next_line == 0: # For OCR or varying font compatibility
-            gap_to_next_line = lines[j + 1].start_y - lines[i].start_y
-            j += 1
+        i = 1
+        while gap_to_next_line == 0 and i <= len(lines) - 1: # For OCR or varying font compatibility
+            gap_to_next_line = lines[i].start_y - lines[0].start_y
+            i += 1
 
         return gap_to_next_line <= self.page_heuristics['start y']['upper bound']  # Aligned header
 

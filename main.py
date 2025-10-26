@@ -160,6 +160,15 @@ class ProcessedText:
             i += 1
         return lines, hanging_open
 
+    def add_paragraph_breaks(self, lines: list[StyledLine]):
+
+        for i, line in enumerate(lines):
+            if self.is_body_paragraph(lines[i:]):
+                pass
+            else:
+                lines[i].text += "\n"
+        return lines
+
     def is_at_left_margin(self, line: StyledLine) -> bool:
         return line.start_x == self.left_boundary
 
